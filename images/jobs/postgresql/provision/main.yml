@@ -1,0 +1,55 @@
+---
+- hosts: localhost
+  gather_facts: false
+  vars:
+    postgres_db_name: "{{ lookup('env', 'DB_NAME') }}"
+    postgres_db_username: "{{ lookup('env', 'DB_USERNAME') }}"
+    postgres_db_password: "{{ lookup('env', 'DB_PASSWORD') }}"
+    postgres_host: "{{ lookup('env', 'PGHOST') }}"
+    postgres_login_username: "{{ lookup('env', 'PGUSER') or 'postgres' }}"
+    postgres_login_password: "{{ lookup('env', 'PGPASSWORD') }}"
+    postgres_login_port: "{{ lookup('env', 'PGPORT') or '5432' }}"
+    postgres_login_db: "{{ lookup('env', 'PGDATABASE') }}"
+    postgres_role_attr_flags: "{{ lookup('env', 'PGROLEATTRS') }}"
+  tasks:
+  - name: "CREATE ROLE {{ postgres_db_username }}"
+    delegate_to: localhost
+    postgresql_user:
+      login_host: "{{ postgres_host }}"
+      login_user: "{{ postgres_login_username }}"
+      login_password: "{{ postgres_login_password }}"
+      port: "{{ postgres_login_port|default('5432') }}"
+      state: present
+      name: "{{ postgres_db_username }}"
+      password: "{{ postgres_db_password }}"
+      role_attr_flags: "{{ postgres_role_attr_flags|default('NOCREATEROLE,NOSUPERUSER,NOCREATEDB') }}"
+      encrypted: true
+
+  - name: "CREATE DATABASE {{ postgres_db_name }}"
+    delegate_to: localhost
+    postgresql_db:
+      login_host: "{{ postgres_host }}"
+      login_user: "{{ postgres_login_username }}"
+      login_password: "{{ postgres_login_password }}"
+      port: "{{ postgres_login_port|default('5432') }}"
+      state: present
+      name: "{{ postgres_db_name }}"
+      owner: "{{ postgres_db_username }}"
+      encoding: "UTF-8"
+      lc_collate: "en_EN.UTF-8"
+      lc_ctype: "en_EN.UTF-8"
+      template: "template0"
+
+  - name: "GRANT ALL PRIVILEGES ON {{ postgres_db_name }} TO {{ postgres_db_username }}"
+    delegate_to: localhost
+    postgresql_privs:
+      login_host: "{{ postgres_host }}"
+      login_user: "{{ postgres_login_username }}"
+      login_password: "{{ postgres_login_password }}"
+      port: "{{ postgres_login_port|default('5432') }}"
+      state: present
+      db: "{{ postgres_login_db|default(postgres_login_username) }}"
+      privs: "ALL"
+      type: "database"
+      obj: "{{ postgres_db_name }}"
+      role: "{{ postgres_db_username }}"

@@ -1,0 +1,25 @@
+#!/bin/sh -e
+K8S_ENDPOINT=${K8S_ENDPOINT-"https://kubernetes.default"}
+SECRET_BASE_DIR=/var/run/secrets
+PKI_SECRETS_DIR=$SECRET_BASE_DIR/pki.digitalvault.eu
+
+# If GPG is installed and secret key(s) are mounted, import
+# them. Do the same for public keys.
+PGP_SECRET_KEYS=$PKI_SECRETS_DIR/pgp/secret.pgp
+PGP_PUBLIC_KEYS=$PKI_SECRETS_DIR/pgp/public.pgp
+if command -v gpg > /dev/null && [ -f $PGP_SECRET_KEYS ]; then
+  gpg --import $PGP_SECRET_KEYS 2> /dev/null
+  export PGP_KEYID=$(gpg --list-secret-keys --with-colons | grep '^fpr' | awk -F ":" 'FNR==1 { print $10 }')
+  echo "Imported PGP key $PGP_KEYID."
+fi
+
+# Run all scripts in the specified directory to further
+# initialize the container.
+export K8S_ENDPOINT
+export PKI_SECRETS_DIR
+export SECRET_BASE_DIR
+run-parts /container/init.d
+
+# Continue the invocation with the commands provided on
+# the command-line.
+$@

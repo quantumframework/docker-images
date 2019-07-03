@@ -1,0 +1,16 @@
+#!/bin/sh
+GKE_PROJECT="${GKE_PROJECT-$GCP_PROJECT}"
+if [ -f "$GOOGLE_APPLICATION_CREDENTIALS" ] && [ ! -z "${GKE_REGION-x}" ]; then
+  gcloud beta container clusters get-credentials\
+    $GKE_CLUSTER\
+    --region $GKE_REGION\
+    --project $GKE_PROJECT
+elif [ -f "$GOOGLE_APPLICATION_CREDENTIALS" ] && [ ! -z "${GKE_ZONE-x}" ]; then
+  gcloud beta container clusters get-credentials\
+    $GKE_CLUSTER\
+    --zone $GKE_ZONE\
+    --project $GKE_PROJECT
+else
+  echo "WARNING: $GOOGLE_APPLICATION_CREDENTIALS does not exist."
+  echo "WARNING: Not authenticated to Kubernetes cluster."
+fi

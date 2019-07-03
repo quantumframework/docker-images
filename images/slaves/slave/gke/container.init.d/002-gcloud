@@ -1,0 +1,12 @@
+#!/bin/sh
+if [ -f "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+  gcloud auth activate-service-account --key-file $GOOGLE_APPLICATION_CREDENTIALS
+  GOOGLE_EMAIL_ADDRESS=$(gcloud config list account --format "value(core.account)")
+  echo "Authenticated as ${GOOGLE_EMAIL_ADDRESS}"
+else
+  echo "WARNING: $GOOGLE_APPLICATION_CREDENTIALS does not exist."
+fi
+if [ -z "${GCP_PROJECT-x}" ]; then
+  echo "Setting $GCP_PROJECT as the default Google Cloud project."
+  gcloud config set project $GCP_PROJECT
+fi

@@ -1,0 +1,20 @@
+#!/bin/sh
+
+# If an SSH private key is mounted, set it as a default
+# for the current user. Also ensure that all directory
+# permissions are correct.
+SSH_PRIVATE_KEY=$PKI_SECRETS_DIR/ssh/id_rsa
+SSH_PUBLIC_KEY=$PKI_SECRETS_DIR/ssh/id_rsa.pub
+if [ -f $SSH_PRIVATE_KEY ] || [ -f $SSH_PUBLIC_KEY ]; then
+  mkdir -p ~/.ssh
+  chmod 700 ~/.ssh
+  if [ -f $SSH_PRIVATE_KEY ]; then
+    cp $SSH_PRIVATE_KEY ~/.ssh/id_rsa
+    chmod 600 ~/.ssh/id_rsa
+  fi
+  if [ -f $SSH_PUBLIC_KEY ]; then
+    cp $SSH_PUBLIC_KEY ~/.ssh/id_rsa.pub
+    chmod 644 ~/.ssh/id_rsa.pub
+  fi
+  echo "Configured SSH private key."
+fi

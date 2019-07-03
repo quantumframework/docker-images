@@ -31,6 +31,9 @@ FROM docker.io/jenkins/jnlp-slave:3.29-1
   RUN mkdir -p $JENKINS_HOME
   RUN chown $JENKINS_UID:$JENKINS_GID $JENKINS_HOME
 
+  RUN curl https://bootstrap.pypa.io/get-pip.py | python3
+  RUN pip3 install openshift==0.8.1
+  RUN pip3 install ansible==2.8.1
   RUN apt clean -y
   RUN apt autoremove gcc g++ --purge
 

@@ -1,0 +1,4 @@
+#!/bin/sh
+terraform import keycloak_realm.realm\
+  $(cat variables/main.json | jq -r .realm)\
+  || echo "The realm did not exist yet."

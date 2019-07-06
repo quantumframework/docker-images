@@ -1,4 +1,6 @@
 ---
+- debug:
+    msg: "IdP SAML URL: {{ awx_saml_idp_url }}"
 - name: configure SAML
   uri:
     method: PUT
@@ -39,4 +41,4 @@
       SOCIAL_AUTH_REMOVE_SUPERUSERS: true
       SOCIAL_AUTH_SAML_SP_PUBLIC_CERT: "{{ lookup('file', awx_saml_crt) }}"
       SOCIAL_AUTH_SAML_SP_PRIVATE_KEY: "{{ lookup('file', awx_saml_key) }}"
-      SOCIAL_AUTH_SAML_SP_ENTITY_ID: "{{ awx_url }}"
+      SOCIAL_AUTH_SAML_SP_ENTITY_ID: "{{ awx_server_url }}"

@@ -1,0 +1,42 @@
+---
+- name: configure SAML
+  uri:
+    method: PUT
+    url: "{{ awx_url }}/api/v2/settings/saml/"
+    validate_certs: "{{ awx_validate_certs }}"
+    user: "{{ awx_username }}"
+    password: "{{ awx_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      SOCIAL_AUTH_SAML_ENABLED_IDPS: |
+        {
+          "{{ awx_saml_idp_label }}": {
+            "url": "{{ awx_saml_idp_url }}",
+            "entity_id": "{{ awx_saml_idp_entity_id }}",
+            "x509cert": "{{ awx_saml_idp_crt }}",
+            "attr_user_permanent_id": "{{ awx_saml_attr_user_id }}",
+            "attr_username": "{{ awx_saml_attr_username }}",
+            "attr_email": "{{ awx_saml_attr_email }}",
+            "attr_last_name": "{{ awx_saml_attr_last_name }}",
+            "attr_first_name": "{{ awx_saml_attr_first_name }}"
+          }
+        }
+      SOCIAL_AUTH_SAML_ORG_INFO: |
+        {
+          "{{ awx_saml_org_lang }}": {
+            "url": "{{ awx_saml_org_url }}",
+            "displayname": "{{ awx_saml_org_display_name }}",
+            "name": "{{ awx_saml_org_name }}"
+          }
+        }
+      SOCIAL_AUTH_SAML_SUPPORT_CONTACT:
+        givenName: "{{ awx_saml_support_name }}"
+        emailAddress: "{{ awx_saml_support_email }}"
+      SOCIAL_AUTH_SAML_TECHNICAL_CONTACT:
+        givenName: "{{ awx_saml_tech_name }}"
+        emailAddress: "{{ awx_saml_tech_email }}"
+      SOCIAL_AUTH_REMOVE_SUPERUSERS: true
+      SOCIAL_AUTH_SAML_SP_PUBLIC_CERT: "{{ lookup('file', awx_saml_crt) }}"
+      SOCIAL_AUTH_SAML_SP_PRIVATE_KEY: "{{ lookup('file', awx_saml_key) }}"
+      SOCIAL_AUTH_SAML_SP_ENTITY_ID: "{{ awx_url }}"

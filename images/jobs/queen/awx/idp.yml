@@ -1,0 +1,13 @@
+- uri:
+    url: "{{ awx_saml_idp_metadata_url }}"
+    validate_certs: false
+    return_content: true
+  register: this
+
+- set_fact:
+    idpsso: "{{ this.content|parse_idpsso }}"
+
+- set_fact:
+    awx_saml_idp_entity_id: "{{ idpsso.entity_id }}"
+    awx_saml_idp_url: "{{ idpsso.url }}"
+    awx_saml_idp_crt: "{{ idpsso.x509cert }}"

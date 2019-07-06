@@ -1,0 +1,21 @@
+---
+- name: configure generic settings
+  uri:
+    method: PUT
+    url: "{{ awx_url }}/api/v2/settings/system/"
+    validate_certs: "{{ awx_validate_certs }}"
+    user: "{{ awx_username }}"
+    password: "{{ awx_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      ACTIVITY_STREAM_ENABLED: true
+      ACTIVITY_STREAM_ENABLED_FOR_INVENTORY_SYNC: true
+      ORG_ADMINS_CAN_SEE_ALL_USERS: false
+      MANAGE_ORGANIZATION_AUTH: true
+      TOWER_ADMIN_ALERTS: true
+      TOWER_URL_BASE: "{{ awx_server_url }}"
+      PROXY_IP_WHITELIST: ["*"]
+      CUSTOM_VENV_PATHS: []
+      INSIGHTS_TRACKING_STATE: false
+      BROKER_DURABILITY: true

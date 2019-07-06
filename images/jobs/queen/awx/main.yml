@@ -1,0 +1,31 @@
+---
+- hosts: localhost
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: python3
+    awx_url: "{{ lookup('env', 'AWX_URL') }}"
+    awx_username: "{{ lookup('env', 'AWX_ROOT_USER') }}"
+    awx_password: "{{ lookup('env', 'AWX_ROOT_PASSWORD') }}"
+    awx_validate_certs: "{{ (lookup('env', 'AWX_VALIDATE_CERTS') == '1') }}"
+    awx_server_url: "{{ lookup('env', 'AWX_SERVER_URL') }}"
+    awx_saml_org_url: "{{ lookup('env', 'SAML_ORG_URL') }}"
+    awx_saml_org_display_name: "{{ lookup('env', 'SAML_ORG_DISPLAY_NAME') }}"
+    awx_saml_org_name: "{{ lookup('env', 'SAML_ORG_NAME') }}"
+    awx_saml_org_lang: "{{ lookup('env', 'SAML_ORG_LANG') }}"
+    awx_saml_key: "{{ lookup('env', 'SAML_KEY') or '/var/run/secrets/saml/sp/tls.key' }}"
+    awx_saml_crt: "{{ lookup('env', 'SAML_CRT') or '/var/run/secrets/saml/sp/tls.crt' }}"
+    awx_saml_idp_metadata_url: "{{ lookup('env', 'SAML_IDP_METADATA_URL') }}"
+    awx_saml_idp_label: "{{ lookup('env', 'SAML_IDP_LABEL') }}"
+    awx_saml_attr_user_id: "{{ lookup('env', 'SAML_ATTR_USER_ID') or 'corporateKey' }}"
+    awx_saml_attr_username: "{{ lookup('env', 'SAML_ATTR_USER_USERNAME') or 'corporateKey' }}"
+    awx_saml_attr_email: "{{ lookup('env', 'SAML_ATTR_EMAIL') or 'email' }}"
+    awx_saml_attr_first_name: "{{ lookup('env', 'SAML_ATTR_FIRST_NAME') or 'firstName' }}"
+    awx_saml_attr_last_name: "{{ lookup('env', 'SAML_ATTR_LAST_NAME') or 'lastName' }}"
+    awx_saml_support_name: "{{ lookup('env', 'SAML_SUPPORT_CONTACT_NAME') }}"
+    awx_saml_support_email: "{{ lookup('env', 'SAML_SUPPORT_CONTACT_EMAIL') }}"
+    awx_saml_tech_name: "{{ lookup('env', 'SAML_TECH_CONTACT_NAME') }}"
+    awx_saml_tech_email: "{{ lookup('env', 'SAML_TECH_CONTACT_EMAIL') }}"
+  tasks:
+  - include_tasks: generic.yml
+  - include_tasks: idp.yml
+  - include_tasks: saml.yml

@@ -536,6 +536,7 @@
     scm_update_cache_timeout: 0
 
 - name: created project for Jenkins slaves (Docker)
+  when: jenkins_enabled|default(False)
   register: project_jenkins_docker
   awx_project_scm:
     api_url: "{{ awx_url }}"
@@ -594,6 +595,7 @@
     rrule: "DTSTART;TZID=Europe/Berlin:20190707T000000 RRULE:FREQ=MINUTELY;INTERVAL=15"
 
 - name: create job template to provision Jenkins Docker slaves
+  when: jenkins_enabled|default(False)
   register: job_jenkins_docker
   retries: 100
   until: job_jenkins_docker is success
@@ -612,6 +614,7 @@
       Provisions slaves used by Jenkins to build Docker images.
 
 - name: set SSH credentials for job template
+  when: jenkins_enabled|default(False)
   awx_job_template_ssh:
     api_url: "{{ awx_url }}"
     api_user: "{{ awx_username }}"
@@ -621,6 +624,7 @@
     credential_id: "{{ ssh.resource.id }}"
 
 - name: create schedule for Jenkins slave provisioning
+  when: jenkins_enabled|default(False)
   awx_schema:
     api_url: "{{ awx_url }}"
     api_user: "{{ awx_username }}"

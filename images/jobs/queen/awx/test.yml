@@ -1,0 +1,157 @@
+- name: "created organization {{ org.name }}"
+  awx_organization:
+    validate_certs: false
+    name: "{{ org.name }}"
+    description: "{{ org.description }}"
+  register: result
+
+- set_fact:
+    awx_organization_id: "{{ result.org.id }}"
+
+# TODO: Here we assume that the pod is in the same namespace
+# as the default secret.
+- when: org.default
+  no_log: true
+  register: query
+  k8s_facts:
+    kind: Secret
+    namespace: "{{ lookup('env', 'POD_NAMESPACE') }}"
+    name: "{{ lookup('env', 'AWX_DEFAULT_SSH_SECRETNAME') or 'awx.secrets.ssh' }}"
+
+- when: org.default
+  no_log: true
+  assert:
+    that: "{{ (query.resources|length) == 1 }}"
+
+- when: org.default
+  no_log: true
+  set_fact:
+    default_ssh:
+      username: "{{ query.resources[0].data.username|b64decode }}"
+      id_rsa: "{{ query.resources[0].data.id_rsa|b64decode }}"
+
+- when: org.default
+  no_log: true
+  register: query
+  k8s_facts:
+    kind: ConfigMap
+    namespace: "{{ lookup('env', 'POD_NAMESPACE') }}"
+    name: "{{ lookup('env', 'JENKINS_DEFAULT_SSH_SECRETNAME') or 'jenkins.secrets.ssh' }}"
+
+- when: org.default
+  no_log: true
+  assert:
+    that: "{{ (query.resources|length) == 1 }}"
+
+- when: org.default
+  no_log: true
+  set_fact:
+    jenkins_openssh_public_key: "{{ query.resources[0].data['id_rsa.pub'] }}"
+
+- name: "import SSH secrets for default organization"
+  when: org.default
+  no_log: true
+  register: ssh
+  awx_credential_ssh:
+    organization_id: "{{ awx_organization_id }}"
+    state: "present"
+    kind: ssh
+    key: "{{ default_ssh.id_rsa }}"
+    name: "{{ org.name }} OpenSSH"
+    description: |-
+      Default OpenSSH key used by the organization to identify
+      over SSH with other nodes in the network.
+    username: "{{ default_ssh.username }}"
+
+- name: "import SSH secrets for default organization"
+  when: org.default
+  no_log: true
+  register: git
+  awx_credential_ssh:
+    organization_id: "{{ awx_organization_id }}"
+    state: "present"
+    kind: scm
+    key: "{{ default_ssh.id_rsa }}"
+    name: "{{ org.name }} Git"
+    description: |-
+      Default OpenSSH key used by the organization to identify
+      over SSH with Git repositories.
+    username: git
+
+- name: "created inventory for cluster runners"
+  when: org.default
+  register: inventory
+  awx_inventory:
+    state: present
+    organization_id: "{{ awx_organization_id }}"
+    name: "Unimatrix One"
+
+- name: "created group for cluster runners"
+  when: org.default
+  register: group
+  awx_inventory_group:
+    state: present
+    inventory_id: "{{ inventory.resource.id }}"
+    name: "unimatrix"
+    description: |-
+      Virtual machines owned by the cluster.
+    variables: |-
+      ---
+      jenkins_openssh_public_key: {{ jenkins_openssh_public_key }}
+
+- name: "added runner hosts"
+  with_items: "{{ awx_runner_hosts }}"
+  awx_inventory_host:
+    state: present
+    group_id: "{{ group.resource.id }}"
+    host: "{{ item }}"
+    description: "Runner used by the cluster."
+    enabled: true
+
+- name: "created project for cluster runners"
+  when: org.default
+  register: project
+  awx_project_scm:
+    state: present
+    organization_id: "{{ awx_organization_id }}"
+    name: "Unimatrix One Runners"
+    description: |-
+      Provisions the virtual machines that are used by the cluster to
+      perform various tasks that typically can not run in Docker
+      containers, such as building images.
+    scm_type: git
+    scm_url: https://github.com/quantumframework/quantum-queen-runners.git
+    scm_branch: master
+    scm_clean: true
+    scm_delete_on_update: false
+    scm_update_on_launch: true
+    scm_update_cache_timeout: 0
+
+- name: "create job template to provision runners"
+  register: job
+  retries: 25
+  until: job is success
+  awx_job_template:
+    state: present
+    inventory_id: "{{ inventory.resource.id }}"
+    project_id: "{{ project.resource.id }}"
+    become: true
+    kind: run
+    playbook: playbooks/runners.yml
+    name: "Provision Cluster Runners"
+    description: "Provisions worker nodes used by the cluster."
+
+- name: "set SSH credentials for job template"
+  awx_job_template_ssh:
+    state: present
+    job_template_id: "{{ job.resource.id }}"
+    credential_id: "{{ ssh.resource.id }}"
+
+- name: "create schedule for cluster runners"
+  awx_schema:
+    state: present
+    job_template_id: "{{ job.resource.id }}"
+    name: "Enfore Runner State"
+    description: |-
+      Ensure that the runners are configured.
+    rrule: "DTSTART;TZID=Europe/Berlin:20190707T000000 RRULE:FREQ=MINUTELY;INTERVAL=15"

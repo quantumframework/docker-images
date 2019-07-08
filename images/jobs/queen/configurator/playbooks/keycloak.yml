@@ -1,0 +1,113 @@
+---
+- name: retrieve PostgreSQL superuser credentials from the cluster
+  no_log: true
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}apps0001"
+    name: postgres.secrets.admin
+
+- name: ensure that the lookup returned a single result
+  no_log: true
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: set the PostgreSQL superuser credentials as Ansible facts
+  no_log: true
+  set_fact:
+    postgres_user: "{{ query.resources[0].data.PGUSER|b64decode }}"
+    postgres_password: "{{ query.resources[0].data.PGPASSWORD|b64decode }}"
+    postgres_host: "rdbms.{{ K8S_NAMESPACE_PREFIX }}apps0001"
+    postgres_port: 5432
+    postgres_db: postgres
+
+- name: retrieve Keycloak database credentials from the cluster
+  no_log: true
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}apps0001"
+    name: keycloak.secrets.rdbms
+
+- name: ensure that the lookup returned a single result
+  no_log: true
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: set the Keycloak database credentials as Ansible facts
+  no_log: true
+  set_fact:
+    keycloak_database_user: "{{ query.resources[0].data.DB_USER|b64decode }}"
+    keycloak_database_password: "{{ query.resources[0].data.DB_PASSWORD|b64decode }}"
+    keycloak_database_name: keycloak
+
+- name: "CREATE ROLE {{ keycloak_database_user }}"
+  register: result
+  retries: 100
+  until: result is success
+  when: not skip_internal_requests
+  postgresql_user:
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_user }}"
+    login_password: "{{ postgres_password }}"
+    port: "{{ postgres_port }}"
+    state: present
+    name: "{{ keycloak_database_user }}"
+    password: "{{ keycloak_database_password }}"
+    encrypted: true
+    role_attr_flags: NOCREATEROLE,NOSUPERUSER,NOCREATEDB
+
+- name: "CREATE DATABASE {{ keycloak_database_name }}"
+  when: not skip_internal_requests
+  postgresql_db:
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_user }}"
+    login_password: "{{ postgres_password }}"
+    port: "{{ postgres_port }}"
+    state: present
+    name: "{{ keycloak_database_name }}"
+    owner: "{{ keycloak_database_user }}"
+    encoding: "UTF-8"
+    lc_collate: "en_EN.UTF-8"
+    lc_ctype: "en_EN.UTF-8"
+    template: "template0"
+
+- name: "GRANT ALL PRIVILEGES ON {{ keycloak_database_name }} TO {{ keycloak_database_user }}"
+  when: not skip_internal_requests
+  postgresql_privs:
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_user }}"
+    login_password: "{{ postgres_password }}"
+    port: "{{ postgres_port }}"
+    state: present
+    db: "{{ postgres_db }}"
+    privs: "ALL"
+    type: "database"
+    obj: "{{ keycloak_database_name }}"
+    role: "{{ keycloak_database_user }}"
+
+- name: retrieve the Keycloak password from the cluster
+  no_log: true
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}apps0001"
+    name: keycloak.secrets.admin
+
+- name: ensure that the lookup returned a single result
+  no_log: true
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: set Keycloak credentials as Ansible facts
+  no_log: true
+  register: result
+  retries: 100
+  until: result is success
+  set_fact:
+    keycloak_username: "{{ query.resources[0].data.KEYCLOAK_USER|b64decode }}"
+    keycloak_password: "{{ query.resources[0].data.KEYCLOAK_PASSWORD|b64decode }}"
+

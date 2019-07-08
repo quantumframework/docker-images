@@ -1,0 +1,9 @@
+- hosts: localhost
+  gather_facts: false
+  vars:
+    awx_runner_hosts: "{{ (lookup('env', 'AWX_RUNNER_HOSTS') or '').split(';') }}"
+  tasks:
+  - with_items: "{{ (lookup('file', 'organization.yml')|from_yaml) }}"
+    loop_control:
+      loop_var: org
+    include_tasks: test.yml

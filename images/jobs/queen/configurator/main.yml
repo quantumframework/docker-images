@@ -1,0 +1,28 @@
+---
+- hosts: localhost
+  gather_facts: false
+  become: false
+  vars:
+    keycloak_url: "https://sso.{{ system_base_domain }}/auth"
+    keycloak_validate_certs: no
+    skip_internal_requests: "{{ lookup('env', 'UM_SKIP_INTERNAL_REQUESTS') == '1' }}"
+    debug: true
+    validate_certs: no
+  tasks:
+  # After an included playbook completes succesfully, we may assume
+  # that the service is up and running.
+  - name: included Keycloak provisioning tasks
+    include: playbooks/keycloak.yml
+    when: keycloak_enabled|default(False)
+
+  - name: included GitLab provisioning tasks
+    include: playbooks/gitlab.yml
+    when: gitlab_enabled|default(False)
+
+  - name: included Jenkins provisioning tasks
+    include: playbooks/jenkins.yml
+    when: jenkins_enabled|default(False)
+
+  - name: included AWX provisioning tasks
+    include: playbooks/awx.yml
+    when: awx_enabled|default(False)

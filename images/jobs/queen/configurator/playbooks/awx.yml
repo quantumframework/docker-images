@@ -1,0 +1,633 @@
+---
+- name: retrieve PostgreSQL superuser credentials from the cluster
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    name: postgres.secrets.admin
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: set the PostgreSQL superuser credentials as Ansible facts
+  no_log: not debug
+  set_fact:
+    postgres_user: "{{ query.resources[0].data.PGUSER|b64decode }}"
+    postgres_password: "{{ query.resources[0].data.PGPASSWORD|b64decode }}"
+    postgres_host: "postgres"
+    postgres_port: 5432
+    postgres_db: postgres
+
+- name: retrieve Ansible Tower database credentials from the cluster
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    name: awx.secrets.rdbms
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: set the Ansible Tower database credentials as Ansible facts
+  no_log: not debug
+  set_fact:
+    awx_database_user: "{{ query.resources[0].data.POSTGRES_USER|b64decode }}"
+    awx_database_password: "{{ query.resources[0].data.POSTGRES_PASSWORD|b64decode }}"
+    awx_database_name: awx
+
+- name: "CREATE ROLE {{ awx_database_user }}"
+  register: result
+  retries: 100
+  until: result is success
+  when: not skip_internal_requests
+  postgresql_user:
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_user }}"
+    login_password: "{{ postgres_password }}"
+    port: "{{ postgres_port }}"
+    state: present
+    name: "{{ awx_database_user }}"
+    password: "{{ awx_database_password }}"
+    encrypted: true
+    role_attr_flags: NOCREATEROLE,NOSUPERUSER,NOCREATEDB
+
+- name: "CREATE DATABASE {{ awx_database_name }}"
+  when: not skip_internal_requests
+  postgresql_db:
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_user }}"
+    login_password: "{{ postgres_password }}"
+    port: "{{ postgres_port }}"
+    state: present
+    name: "{{ awx_database_name }}"
+    owner: "{{ awx_database_user }}"
+    encoding: "UTF-8"
+    lc_collate: "en_EN.UTF-8"
+    lc_ctype: "en_EN.UTF-8"
+    template: "template0"
+
+- name: "GRANT ALL PRIVILEGES ON {{ awx_database_name }} TO {{ awx_database_user }}"
+  when: not skip_internal_requests
+  postgresql_privs:
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_user }}"
+    login_password: "{{ postgres_password }}"
+    port: "{{ postgres_port }}"
+    state: present
+    db: "{{ postgres_db }}"
+    privs: "ALL"
+    type: "database"
+    obj: "{{ awx_database_name }}"
+    role: "{{ awx_database_user }}"
+
+- name: retrieve the Identity Provider (IdP) credentials from the cluster
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}apps0001"
+    name: saml.idp.awx
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: set the IdP keys as Ansible facts
+  no_log: not debug
+  set_fact:
+    awx_saml_idp_crt: "{{ query.resources[0].data['tls.crt']|b64decode }}"
+    awx_saml_idp_key: "{{ query.resources[0].data['tls.key']|b64decode }}"
+
+- name: "configured SAML2 client for Ansible Tower"
+  no_log: false
+  when: keycloak_enabed|default(True)
+  changed_when: false
+  keycloak_client:
+    auth_client_id: "{{ keycloak_auth_client_id|default('admin-cli') }}"
+    auth_keycloak_url: "{{ keycloak_url }}"
+    auth_realm: "{{ keycloak_auth_realm|default('master') }}"
+    auth_username: "{{ keycloak_username }}"
+    auth_password: "{{ keycloak_password }}"
+    validate_certs: "{{ validate_certs }}"
+    state: present
+    protocol: saml
+    realm: "{{ awx_keycloak_realm|default('default') }}"
+    client_id: "https://awx.{{ system_base_domain }}"
+    name: Ansible Tower
+    client_authenticator_type: client-secret
+    #root_url: "https://awx.{{ system_base_domain }}"
+    #base_url: "/"
+    redirect_uris:
+    - "https://awx.{{ system_base_domain }}/*"
+    standard_flow_enabled: yes
+    implicit_flow_enabled: yes
+    direct_access_grants_enabled: no
+    service_accounts_enabled: yes
+    authorization_services_enabled: yes
+    full_scope_allowed: false
+    attributes:
+      saml.authnstatement: true
+      saml.client.signature: false
+      saml.force.post.binding: true
+      saml.server.signature: true
+      saml.signature.algorithm: RSA_SHA256
+      saml.signing.certificate: "{{ awx_saml_idp_crt }}"
+      saml.signing.private.key: "{{ awx_saml_idp_key }}"
+
+      saml_force_name_id_format: yes
+      saml_name_id_format: username
+      saml_signature_canonicalization_method: "http://www.w3.org/2001/10/xml-exc-c14n#"
+      user.info.response.signature.alg: RS256
+      request.object.signature.alg: RS256
+    protocol_mappers:
+    - config:
+        attribute.name: email
+        attribute.nameformat: Basic
+        friendly.name: email
+        user.attribute: email
+      consentRequired: false
+      name: X500 email
+      protocol: saml
+      protocolMapper: saml-user-property-mapper
+    - config:
+        attribute.name: lastName
+        attribute.nameformat: Basic
+        friendly.name: lastName
+        user.attribute: lastName
+      consentRequired: false
+      name: X500 surname
+      protocol: saml
+      protocolMapper: saml-user-property-mapper
+    - config:
+        attribute.name: corporateKey
+        attribute.nameformat: Basic
+        friendly.name: corporateKey
+        user.attribute: corporateKey
+      consentRequired: false
+      name: corporateKey
+      protocol: saml
+      protocolMapper: saml-user-attribute-mapper
+    - config:
+        attribute.name: firstName
+        attribute.nameformat: urn:oasis:names:tc:SAML:2.0:attrname-format:uri
+        friendly.name: firstName
+        user.attribute: firstName
+      consentRequired: false
+      name: X500 givenName
+      protocol: saml
+      protocolMapper: saml-user-property-mapper
+    - config:
+        attribute.name: Role
+        attribute.nameformat: Basic
+        single: 'false'
+      consentRequired: false
+      name: role list
+      protocol: saml
+      protocolMapper: saml-role-list-mapper
+
+- name: retrieve the IdP metadata
+  register: this
+  uri:
+    url: "https://sso.{{ system_base_domain }}/auth/realms/{{ awx_keycloak_realm|default(keycloak_realm) }}/protocol/saml/descriptor"
+    validate_certs: "{{ validate_certs }}"
+    return_content: true
+
+- name: set the IdP metadata as Ansible facts
+  set_fact:
+    idpsso: "{{ this.content|parse_idpsso }}"
+
+- name: set the parsed IdP metadata as Ansible facts
+  set_fact:
+    awx_saml_idp_entity_id: "{{ idpsso.entity_id }}"
+    awx_saml_idp_url: "{{ idpsso.url }}"
+    awx_saml_idp_crt: "{{ idpsso.x509cert }}"
+
+- name: retrieve AWX credentials from the cluster
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    name: awx.secrets.admin
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: set the PostgreSQL superuser credentials as Ansible facts
+  no_log: not debug
+  set_fact:
+    awx_username: "{{ query.resources[0].data.AWX_ROOT_USER|b64decode }}"
+    awx_password: "{{ query.resources[0].data.AWX_ROOT_PASSWORD|b64decode }}"
+    awx_url: "https://awx.{{ system_base_domain }}"
+
+- name: ensure Ansible Tower configuration is triggered
+  register: this
+  uri:
+    url: "https://awx.{{ system_base_domain }}/"
+    validate_certs: false
+
+# Retry until success since at this point AWX may not have finished
+# initializing.
+- name: basic AWX configuration
+  register: result
+  until: result is success
+  retries: 100
+  uri:
+    method: PUT
+    url: "https://awx.{{ system_base_domain }}/api/v2/settings/system/"
+    validate_certs: "{{ validate_certs }}"
+    user: "{{ awx_username }}"
+    password: "{{ awx_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      ACTIVITY_STREAM_ENABLED: true
+      ACTIVITY_STREAM_ENABLED_FOR_INVENTORY_SYNC: true
+      ORG_ADMINS_CAN_SEE_ALL_USERS: true
+      MANAGE_ORGANIZATION_AUTH: true
+      TOWER_ADMIN_ALERTS: true
+      TOWER_URL_BASE: "https://awx.{{ system_base_domain }}"
+      PROXY_IP_WHITELIST: ["*"]
+      CUSTOM_VENV_PATHS: []
+      INSIGHTS_TRACKING_STATE: false
+      BROKER_DURABILITY: true
+
+# Create the default organization. Set a high number of
+# retries; we assume that if this task is succesfully
+# executed, Ansible Tower is up and running.
+- name: "created organization {{ org_name }}"
+  register: result
+  awx_organization:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    validate_certs: false
+    name: "{{ awx_organization_name|default(org_name) }}"
+    description: "{{ org_description|default('') }}"
+
+- name: "set the organization identifier as an Ansible fact"
+  set_fact:
+    awx_organization_id: "{{ result.org.id }}"
+    awx_organization_name: "{{ result.org.name }}"
+
+- name: retrieve AWX SAML key material from the cluster
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    name: saml.sp.awx
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: set the AWX Service Provider (SP) key and certificate as Ansible facts
+  no_log: not debug
+  set_fact:
+    awx_saml_sp_crt: "{{ query.resources[0].data['tls.crt']|b64decode }}"
+    awx_saml_sp_key: "{{ query.resources[0].data['tls.key']|b64decode }}"
+
+- name: configure SAML
+  no_log: not debug
+  uri:
+    method: PUT
+    url: "https://awx.{{ system_base_domain }}/api/v2/settings/saml/"
+    validate_certs: "{{ validate_certs }}"
+    user: "{{ awx_username }}"
+    password: "{{ awx_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      SOCIAL_AUTH_SAML_ENABLED_IDPS:
+        SSO:
+          url: "{{ awx_saml_idp_url }}"
+          entity_id: "{{ awx_saml_idp_entity_id }}"
+          x509cert: "{{ awx_saml_idp_crt }}"
+          attr_user_permanent_id: corporateKey
+          attr_username: corporateKey
+          attr_email: email
+          attr_last_name: lastName
+          attr_first_name: firstName
+      SOCIAL_AUTH_SAML_ORG_INFO: |
+        {
+          "en-EN": {
+            "url": "{{ saml_org_url }}",
+            "displayname": "{{ saml_org_display_name|default(saml_org_name) }}",
+            "name": "{{ saml_org_name }}"
+          }
+        }
+      SOCIAL_AUTH_SAML_ORGANIZATION_MAP: |-
+        {
+          "{{ awx_organization_name }}": {
+            "users": true
+          }
+        }
+      SOCIAL_AUTH_SAML_TEAM_MAP: |-
+        {
+          "{{ awx_default_team_name }}": {
+            "organization": "{{ awx_organization_name }}",
+            "users": true
+          }
+        }
+      SOCIAL_AUTH_SAML_SUPPORT_CONTACT:
+        givenName: "{{ saml_support_contact_name }}"
+        emailAddress: "{{ saml_support_contact_email }}"
+      SOCIAL_AUTH_SAML_TECHNICAL_CONTACT:
+        givenName: "{{ saml_technical_contact_name }}"
+        emailAddress: "{{ saml_technical_contact_email }}"
+      SOCIAL_AUTH_REMOVE_SUPERUSERS: true
+      SOCIAL_AUTH_SAML_SP_PUBLIC_CERT: "{{ awx_saml_sp_crt }}"
+      SOCIAL_AUTH_SAML_SP_PRIVATE_KEY: "{{ awx_saml_sp_key }}"
+      SOCIAL_AUTH_SAML_SP_ENTITY_ID: "https://awx.{{ system_base_domain }}"
+
+- name: "lookup the Ansible Tower default SSH key"
+  no_log: not debug
+  register: query
+  k8s_facts:
+    kind: Secret
+    namespace: "{{ lookup('env', 'POD_NAMESPACE') }}"
+    name: "{{ lookup('env', 'AWX_DEFAULT_SSH_SECRETNAME') or 'awx.secrets.ssh' }}"
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "{{ (query.resources|length) == 1 }}"
+
+- name: set the Ansible Tower public and private key as Ansible facts
+  no_log: not debug
+  set_fact:
+    default_ssh:
+      username: "{{ query.resources[0].data.username|b64decode }}"
+      id_rsa: "{{ query.resources[0].data.id_rsa|b64decode }}"
+
+- name: lookup the public key for Jenkins
+  when: jenkins_enabled|default(False)
+  no_log: not debug
+  register: query
+  k8s_facts:
+    kind: ConfigMap
+    namespace: "{{ lookup('env', 'POD_NAMESPACE') }}"
+    name: "{{ lookup('env', 'JENKINS_DEFAULT_SSH_SECRETNAME') or 'jenkins.secrets.ssh' }}"
+
+- name: ensure that the lookup returned a single result
+  when: jenkins_enabled|default(False)
+  no_log: not debug
+  assert:
+    that: "{{ (query.resources|length) == 1 }}"
+
+- name: set the Jenkins public key as an Ansible fact
+  when: jenkins_enabled|default(False)
+  no_log: not debug
+  set_fact:
+    jenkins_openssh_public_key: "{{ query.resources[0].data['id_rsa.pub'] }}"
+
+- name: "import default SSH key for default organization ({{ awx_organization_name }})"
+  no_log: not debug
+  register: ssh
+  awx_credential_ssh:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    organization_id: "{{ awx_organization_id }}"
+    state: "present"
+    kind: ssh
+    key: "{{ default_ssh.id_rsa }}"
+    name: "{{ awx_organization_name }} OpenSSH"
+    description: >-
+      Default OpenSSH key used by Ansible Tower to identify
+      over SSH with other nodes in the network.
+    username: "{{ default_ssh.username }}"
+
+- name: "lookup the Ansible Tower Git SSH key"
+  no_log: not debug
+  register: query
+  k8s_facts:
+    kind: Secret
+    namespace: "{{ lookup('env', 'POD_NAMESPACE') }}"
+    name: "{{ lookup('env', 'AWX_DEFAULT_GIT_SECRETNAME') or 'awx.secrets.git' }}"
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "{{ (query.resources|length) == 1 }}"
+
+- name: set the Ansible Tower public and private key as Ansible facts
+  no_log: not debug
+  set_fact:
+    git_ssh:
+      username: "{{ query.resources[0].data.username|b64decode }}"
+      id_rsa: "{{ query.resources[0].data.id_rsa|b64decode }}"
+
+- name: "import default SSH key for default organization ({{ awx_organization_name }})"
+  no_log: not debug
+  register: git
+  awx_credential_ssh:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    organization_id: "{{ awx_organization_id }}"
+    state: "present"
+    kind: scm
+    key: "{{ git_ssh.id_rsa }}"
+    name: "{{ awx_organization_name }} Git"
+    description: >-
+      Default OpenSSH key used by the organization to identify
+      over SSH with Git repositories.
+    username: git
+
+- name: created inventory for cluster runners
+  register: inventory
+  awx_inventory:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    organization_id: "{{ awx_organization_id }}"
+    name: "Unimatrix One"
+
+- name: created group for cluster runners
+  register: group_runners
+  awx_inventory_group:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    inventory_id: "{{ inventory.resource.id }}"
+    name: "runners"
+    description: >-
+      Virtual machines owned by the cluster.
+
+- name: created group for Jenkins slaves
+  register: group_jenkins
+  when: jenkins_enabled|default(False)
+  awx_inventory_group:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    inventory_id: "{{ inventory.resource.id }}"
+    name: "jenkins"
+    description: >-
+      Jenkins slaves for Docker builds.
+    variables: |-
+      ---
+      jenkins_openssh_public_key: {{ jenkins_openssh_public_key }}
+
+- name: added Jenkins slave hosts (Docker) to group
+  with_items: "{{ jenkins_slaves_docker|default([]) }}"
+  when: jenkins_enabled|default(False)
+  awx_inventory_host:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    group_id: "{{ group_jenkins.resource.id }}"
+    host: "{{ item }}"
+    description: "Jenkins Docker slave."
+    enabled: true
+
+- name: added Ansible Tower runners to group
+  with_items: "{{ awx_runners|default([]) }}"
+  awx_inventory_host:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    group_id: "{{ group_runners.resource.id }}"
+    host: "{{ item }}"
+    description: "Ansible Tower task runner."
+    enabled: true
+
+- name: created project for cluster runners
+  register: project_runners
+  awx_project_scm:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    organization_id: "{{ awx_organization_id }}"
+    name: "Unimatrix One Runners"
+    description: >-
+      Provisions the virtual machines that are used by the cluster to
+      perform various tasks that typically can not run in Docker
+      containers, such as building images.
+    scm_type: git
+    scm_url: "{{ awx_runners_git_repo|default('https://github.com/quantumframework/quantum-queen-runners.git') }}"
+    scm_branch: "{{ awx_runners_git_branch|default('master') }}"
+    scm_clean: true
+    scm_delete_on_update: false
+    scm_update_on_launch: true
+    scm_update_cache_timeout: 0
+
+- name: created project for Jenkins slaves (Docker)
+  register: project_jenkins_docker
+  awx_project_scm:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    organization_id: "{{ awx_organization_id }}"
+    name: "Jenkins Slaves (Docker)"
+    description: >-
+      Provisions slaves that Jenkins uses to build Docker
+      images.
+    scm_type: git
+    scm_url: "{{ awx_runners_git_repo|default('https://github.com/quantumframework/quantum-queen-runners.git') }}"
+    scm_branch: "{{ awx_runners_git_branch|default('master') }}"
+    scm_clean: true
+    scm_delete_on_update: false
+    scm_update_on_launch: true
+    scm_update_cache_timeout: 0
+
+- name: create job template to provision runners
+  register: job_runners
+  retries: 100
+  until: job_runners is success
+  awx_job_template:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    inventory_id: "{{ inventory.resource.id }}"
+    project_id: "{{ project_runners.resource.id }}"
+    become: true
+    kind: run
+    playbook: playbooks/runners.yml
+    name: "Provision Cluster Runners"
+    description: "Provisions worker nodes used by the cluster."
+
+- name: set SSH credentials for job template
+  awx_job_template_ssh:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    job_template_id: "{{ job_runners.resource.id }}"
+    credential_id: "{{ ssh.resource.id }}"
+
+- name: create schedule for cluster runners
+  awx_schema:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    job_template_id: "{{ job_runners.resource.id }}"
+    name: "Enforce Runner State"
+    description: >-
+      Ensure that the runners are configured.
+    rrule: "DTSTART;TZID=Europe/Berlin:20190707T000000 RRULE:FREQ=MINUTELY;INTERVAL=15"
+
+- name: create job template to provision Jenkins Docker slaves
+  register: job_jenkins_docker
+  retries: 100
+  until: job_jenkins_docker is success
+  awx_job_template:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    inventory_id: "{{ inventory.resource.id }}"
+    project_id: "{{ project_jenkins_docker.resource.id }}"
+    become: true
+    kind: run
+    playbook: playbooks/jenkins-docker.yml
+    name: "Provision Jenkins Docker Slaves"
+    description: >-
+      Provisions slaves used by Jenkins to build Docker images.
+
+- name: set SSH credentials for job template
+  awx_job_template_ssh:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    job_template_id: "{{ job_jenkins_docker.resource.id }}"
+    credential_id: "{{ ssh.resource.id }}"
+
+- name: create schedule for Jenkins slave provisioning
+  awx_schema:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    job_template_id: "{{ job_jenkins_docker.resource.id }}"
+    name: "Enforce Jenkins Slave (Docker) State"
+    description: >-
+      Ensure that the Jenkins Docker slaves. are configured.
+    rrule: "DTSTART;TZID=Europe/Berlin:20190707T000500 RRULE:FREQ=MINUTELY;INTERVAL=15"

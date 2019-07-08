@@ -54,13 +54,7 @@ FROM docker.io/library/python:3.7-slim-stretch
   RUN echo "---\n{}" > vars/main.yml
   RUN echo "---\n{}" > vault/main.yml
 
-  RUN mkdir /home/ansible/etc
-  RUN echo '---\n{}' > /home/ansible/etc/organizations.yml
-  RUN echo '---\n{}' > /home/ansible/etc/teams.yml
-  COPY filter_plugins filter_plugins
-  COPY generic.yml generic.yml
-  COPY idp.yml idp.yml
-  COPY saml.yml saml.yml
+  COPY playbooks/ playbooks/
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint"]
 

@@ -1,0 +1,4 @@
+- name: DigitalCitizen
+  default: true
+  description: |
+    Enabling global digital citizenship.

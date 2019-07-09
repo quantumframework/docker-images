@@ -3,12 +3,16 @@
   gather_facts: false
   become: false
   vars:
+    ansible_python_interpreter: python3
     keycloak_url: "https://sso.{{ system_base_domain }}/auth"
     keycloak_validate_certs: no
     skip_internal_requests: "{{ lookup('env', 'UM_SKIP_INTERNAL_REQUESTS') == '1' }}"
     debug: true
     validate_certs: no
   tasks:
+  - include_vars: /etc/unimatrix/defaults.yml
+  - include_vars: /etc/unimatrix/unimatrix.yml
+
   # After an included playbook completes succesfully, we may assume
   # that the service is up and running.
   - name: included Keycloak provisioning tasks

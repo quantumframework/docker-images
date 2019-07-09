@@ -27,6 +27,13 @@ FROM docker.io/library/python:3.7-slim-stretch
   RUN groupadd -g $RUNTIME_GID $RUNTIME_GRP
   RUN useradd -d "$RUNTIME_HOME" -u $RUNTIME_UID -g $RUNTIME_GID\
     -m -s /bin/bash $RUNTIME_USR
+  RUN apt update || apt update
+  RUN apt install -y unzip
+  RUN wget https://releases.hashicorp.com/terraform/0.12.3/terraform_0.12.3_linux_amd64.zip
+  RUN unzip terraform_0.12.3_linux_amd64.zip
+  RUN chmod +x terraform
+  RUN mv terraform /usr/local/bin/terraform
+  RUN rm terraform_0.12.3_linux_amd64.zip
   RUN pip3 install lxml==4.3.4
   RUN pip3 install requests==2.22.0
 
@@ -54,6 +61,10 @@ FROM docker.io/library/python:3.7-slim-stretch
   RUN echo "---\n{}" > vars/main.yml
   RUN echo "---\n{}" > vault/main.yml
 
+  RUN mkdir -p ~/.terraform.d/plugins/linux_amd64
+  RUN wget https://github.com/mrparkers/terraform-provider-keycloak/releases/download/1.9.0/terraform-provider-keycloak_v1.9.0_linux_amd64_static.zip
+  RUN unzip -: terraform-provider-keycloak*.zip -d ~/.terraform.d/plugins/linux_amd64/
+  RUN rm terraform-provider-keycloak*.zip
   COPY playbooks/ playbooks/
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint"]

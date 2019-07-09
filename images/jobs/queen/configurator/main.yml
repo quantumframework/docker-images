@@ -7,7 +7,7 @@
     keycloak_url: "https://sso.{{ system_base_domain }}/auth"
     keycloak_validate_certs: no
     skip_internal_requests: "{{ lookup('env', 'UM_SKIP_INTERNAL_REQUESTS') == '0' }}"
-    debug: true
+    debug: "{{ lookup('env', 'DEBUG') == '1' }}"
     validate_certs: no
   tasks:
   - include_vars: /etc/unimatrix/defaults.yml

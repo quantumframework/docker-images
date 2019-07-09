@@ -1,6 +1,6 @@
 ---
 - name: retrieve the GitLab OpenID client secret from the cluster
-  no_log: true
+  no_log: not debug
   register: query
   k8s_facts:
     api_version: v1
@@ -9,12 +9,12 @@
     name: openid.secrets.gitlab
 
 - name: ensure that the lookup returned a single result
-  no_log: true
+  no_log: not debug
   assert:
     that: "(query.resources|length) == 1"
 
 - name: "configured OpenID client for GitLab"
-  no_log: true
+  no_log: not debug
   when: keycloak_enabed|default(True)
   keycloak_client:
     auth_client_id: "{{ keycloak_auth_client_id|default('admin-cli') }}"
@@ -59,7 +59,7 @@
 # exists. Lookup the admin secret (as the user to
 # connect) and the GitLab database credential.
 - name: retrieve PostgreSQL superuser credentials from the cluster
-  no_log: true
+  no_log: not debug
   register: query
   k8s_facts:
     api_version: v1
@@ -68,12 +68,12 @@
     name: postgres.secrets.admin
 
 - name: ensure that the lookup returned a single result
-  no_log: true
+  no_log: not debug
   assert:
     that: "(query.resources|length) == 1"
 
 - name: set the PostgreSQL superuser credentials as Ansible facts
-  no_log: true
+  no_log: not debug
   set_fact:
     postgres_user: "{{ query.resources[0].data.PGUSER|b64decode }}"
     postgres_password: "{{ query.resources[0].data.PGPASSWORD|b64decode }}"
@@ -82,7 +82,7 @@
     postgres_db: postgres
 
 - name: retrieve GitLab database credentials from the cluster
-  no_log: true
+  no_log: not debug
   register: query
   k8s_facts:
     api_version: v1
@@ -91,12 +91,12 @@
     name: gitlab.secrets.rdbms
 
 - name: ensure that the lookup returned a single result
-  no_log: true
+  no_log: not debug
   assert:
     that: "(query.resources|length) == 1"
 
 - name: set the GitLab database credentials as Ansible facts
-  no_log: true
+  no_log: not debug
   set_fact:
     gitlab_database_user: "{{ query.resources[0].data.POSTGRES_USER|b64decode }}"
     gitlab_database_password: "{{ query.resources[0].data.POSTGRES_PASSWORD|b64decode }}"

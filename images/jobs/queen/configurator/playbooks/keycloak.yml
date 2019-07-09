@@ -1,6 +1,6 @@
 ---
 - name: retrieve PostgreSQL superuser credentials from the cluster
-  no_log: true
+  no_log: not debug
   register: query
   k8s_facts:
     api_version: v1
@@ -9,12 +9,12 @@
     name: postgres.secrets.admin
 
 - name: ensure that the lookup returned a single result
-  no_log: true
+  no_log: not debug
   assert:
     that: "(query.resources|length) == 1"
 
 - name: set the PostgreSQL superuser credentials as Ansible facts
-  no_log: true
+  no_log: not debug
   set_fact:
     postgres_user: "{{ query.resources[0].data.PGUSER|b64decode }}"
     postgres_password: "{{ query.resources[0].data.PGPASSWORD|b64decode }}"
@@ -23,7 +23,7 @@
     postgres_db: postgres
 
 - name: retrieve Keycloak database credentials from the cluster
-  no_log: true
+  no_log: not debug
   register: query
   k8s_facts:
     api_version: v1
@@ -32,12 +32,12 @@
     name: keycloak.secrets.rdbms
 
 - name: ensure that the lookup returned a single result
-  no_log: true
+  no_log: not debug
   assert:
     that: "(query.resources|length) == 1"
 
 - name: set the Keycloak database credentials as Ansible facts
-  no_log: true
+  no_log: not debug
   set_fact:
     keycloak_database_user: "{{ query.resources[0].data.DB_USER|b64decode }}"
     keycloak_database_password: "{{ query.resources[0].data.DB_PASSWORD|b64decode }}"
@@ -89,7 +89,7 @@
     role: "{{ keycloak_database_user }}"
 
 - name: retrieve the Keycloak password from the cluster
-  no_log: true
+  no_log: not debug
   register: query
   k8s_facts:
     api_version: v1
@@ -98,12 +98,12 @@
     name: keycloak.secrets.admin
 
 - name: ensure that the lookup returned a single result
-  no_log: true
+  no_log: not debug
   assert:
     that: "(query.resources|length) == 1"
 
 - name: set Keycloak credentials as Ansible facts
-  no_log: true
+  no_log: not debug
   register: result
   retries: 100
   until: result is success

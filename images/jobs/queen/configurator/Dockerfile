@@ -28,7 +28,7 @@ FROM docker.io/library/python:3.7-slim-stretch
   RUN useradd -d "$RUNTIME_HOME" -u $RUNTIME_UID -g $RUNTIME_GID\
     -m -s /bin/bash $RUNTIME_USR
   RUN apt update || apt update
-  RUN apt install -y unzip
+  RUN apt install -y unzip wget
   RUN wget https://releases.hashicorp.com/terraform/0.12.3/terraform_0.12.3_linux_amd64.zip
   RUN unzip terraform_0.12.3_linux_amd64.zip
   RUN chmod +x terraform
@@ -47,9 +47,6 @@ FROM docker.io/library/python:3.7-slim-stretch
   RUN find /container/init.d -type f -exec chmod +x {} \;
   RUN chmod +x /usr/local/bin/docker-entrypoint
 
-  RUN apt autoremove -y python3-pip --purge
-  RUN apt clean
-
   USER ansible
   WORKDIR /home/ansible
   COPY Makefile .
@@ -66,7 +63,14 @@ FROM docker.io/library/python:3.7-slim-stretch
   RUN unzip -: terraform-provider-keycloak*.zip -d ~/.terraform.d/plugins/linux_amd64/
   RUN rm terraform-provider-keycloak*.zip
   COPY playbooks/ playbooks/
+  COPY modules/ modules/
+  COPY plans/ plans/
 
+  USER root
+  RUN apt autoremove -y --purge unzip wget
+  RUN apt autoremove -y python3-pip --purge
+  RUN apt clean
+
+USER ansible
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint"]
-
 CMD ["ansible-playbook", "main.yml", "-i", "hosts", "-e", "@vars/main.yml", "-e", "@vault/main.yml"]

@@ -37,6 +37,8 @@ FROM docker.io/library/python:3.7-slim-stretch
   RUN pip3 install lxml==4.3.4
   RUN pip3 install requests==2.22.0
   RUN pip3 install quantum-queen==1.0.0
+  RUN pip3 install openshift==0.8.1
+  RUN pip3 install psycopg2==2.8.3
 
 
   # Copy all executables, and explicitely copy the docker-entrypoint

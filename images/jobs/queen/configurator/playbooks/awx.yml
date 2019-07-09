@@ -234,7 +234,9 @@
     awx_url: "https://awx.{{ system_base_domain }}"
 
 - name: ensure Ansible Tower configuration is triggered
-  register: this
+  register: result
+  until: result is success
+  retries: 100
   uri:
     url: "https://awx.{{ system_base_domain }}/"
     validate_certs: false
@@ -242,9 +244,6 @@
 # Retry until success since at this point AWX may not have finished
 # initializing.
 - name: basic AWX configuration
-  register: result
-  until: result is success
-  retries: 100
   uri:
     method: PUT
     url: "https://awx.{{ system_base_domain }}/api/v2/settings/system/"

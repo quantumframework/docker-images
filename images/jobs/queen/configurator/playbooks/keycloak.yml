@@ -111,3 +111,44 @@
     keycloak_username: "{{ query.resources[0].data.KEYCLOAK_USER|b64decode }}"
     keycloak_password: "{{ query.resources[0].data.KEYCLOAK_PASSWORD|b64decode }}"
 
+- name: ensure that the Terraform state is clean
+  with_items:
+  - plans/keycloak/.terraform
+  - plans/keycloak/terraform.tfstate
+  - plans/keycloak/terraform.tfstate.backup
+  file:
+    path: "{{ item }}"
+    state: absent
+
+- name: initialize Terraform
+  changed_when: false
+  command: terraform init
+  environment: &TERRAFORM_ENV
+    KEYCLOAK_URL: "https://sso.{{ system_base_domain }}"
+    KEYCLOAK_REALM: master
+    KEYCLOAK_USER: "{{ keycloak_username }}"
+    KEYCLOAK_PASSWORD: "{{ keycloak_password }}"
+  args:
+    chdir: plans/keycloak
+
+- name: import Keycloak realm in Terraform
+  changed_when: false
+  command: "terraform import keycloak_realm.realm {{ keycloak_realm }}"
+  environment: *TERRAFORM_ENV
+  args:
+    chdir: plans/keycloak
+  ignore_errors: true
+
+- name: render Terraform variables
+  changed_when: false
+  template:
+    src: "plans/keycloak/variables.json.j2"
+    dest: "plans/keycloak/variables.json"
+
+- name: create default realm
+  changed_when: false
+  environment: *TERRAFORM_ENV
+  command: "terraform apply --auto-approve --var-file variables.json"
+  environment: *TERRAFORM_ENV
+  args:
+    chdir: plans/keycloak

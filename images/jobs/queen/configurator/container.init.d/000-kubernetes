@@ -6,14 +6,14 @@ K8S_SECRETS_DIR=$SECRET_BASE_DIR/kubernetes.io
 K8S_SA_TOKEN=$K8S_SECRETS_DIR/serviceaccount/token
 K8S_ENDPOINT=${K8S_ENDPOINT-"https://kubernetes.default"}
 K8S_SERVICEACCOUNT=queen
-#if command -v kubectl > /dev/null && [ -f $K8S_SA_TOKEN ]; then
-#  kubectl config set-cluster queen\
-#    --server=$K8S_ENDPOINT\
-#    --certificate-authority=$K8S_SECRETS_DIR/ca.crt
-#  kubectl config set-context queen --cluster=queen
-#  kubectl config set-credentials $K8S_SERVICEACCOUNT\
-#    --token=$(cat $K8S_TOKEN)
-#  kubectl config set-context queen --user=$K8S_SERVICEACCOUNT
-#  kubectl config use-context queen
-#  echo "Configured context 'queen' for kubectl."
-#fi
+if command -v kubectl > /dev/null && [ -f $K8S_SA_TOKEN ]; then
+  kubectl config set-cluster queen\
+    --server=$K8S_ENDPOINT\
+    --certificate-authority=$K8S_SECRETS_DIR/ca.crt
+  kubectl config set-context queen --cluster=queen
+  kubectl config set-credentials $K8S_SERVICEACCOUNT\
+    --token=$(cat $K8S_TOKEN)
+  kubectl config set-context queen --user=$K8S_SERVICEACCOUNT
+  kubectl config use-context queen
+  echo "Configured context 'queen' for kubectl."
+fi

@@ -592,7 +592,7 @@
     name: "Enforce Runner State"
     description: >-
       Ensure that the runners are configured.
-    rrule: "DTSTART;TZID=Europe/Berlin:20190707T000000 RRULE:FREQ=MINUTELY;INTERVAL=15"
+    rrule: "DTSTART;TZID=Europe/Berlin:20190707T000500 RRULE:FREQ=HOURLY;INTERVAL=2"
 
 - name: create job template to provision Jenkins Docker slaves
   when: jenkins_enabled|default(False)
@@ -634,4 +634,4 @@
     name: "Enforce Jenkins Slave (Docker) State"
     description: >-
       Ensure that the Jenkins Docker slaves. are configured.
-    rrule: "DTSTART;TZID=Europe/Berlin:20190707T000500 RRULE:FREQ=MINUTELY;INTERVAL=15"
+    rrule: "DTSTART;TZID=Europe/Berlin:20190707T000500 RRULE:FREQ=HOURLY;INTERVAL=2"

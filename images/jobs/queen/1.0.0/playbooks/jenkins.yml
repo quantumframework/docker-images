@@ -1,0 +1,55 @@
+---
+- name: retrieve the Jenkins OpenID client secret from the cluster
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}apps0001"
+    name: openid.secrets.jenkins
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: "configured OpenID client for Jenkins"
+  no_log: not debug
+  when: keycloak_enabed|default(True)
+  keycloak_client:
+    auth_client_id: "{{ keycloak_auth_client_id|default('admin-cli') }}"
+    auth_keycloak_url: "{{ keycloak_url }}"
+    auth_realm: "{{ keycloak_auth_realm|default('master') }}"
+    auth_username: "{{ keycloak_username }}"
+    auth_password: "{{ keycloak_password }}"
+    validate_certs: "{{ keycloak_validate_certs }}"
+    state: present
+    protocol: openid-connect
+    realm: "{{ jenkins_keycloak_realm|default('default') }}"
+    client_id: "https://jenkins.{{ system_base_domain }}"
+    name: Jenkins
+    secret: "{{ query.resources[0].data.CLIENT_SECRET|b64decode }}"
+    client_authenticator_type: client-secret
+    standard_flow_enabled: yes
+    implicit_flow_enabled: yes
+    direct_access_grants_enabled: yes
+    service_accounts_enabled: yes
+    authorization_services_enabled: yes
+    root_url: "https://jenkins.{{ system_base_domain }}"
+    base_url: "/"
+    redirect_uris:
+    - "https://jenkins.{{ system_base_domain }}/*"
+    web_origins:
+    - "https://jenkins.{{ system_base_domain }}/*"
+    protocol_mappers:
+    - config:
+        access.token.claim: "true"
+        claim.name: corporate_key
+        id.token.claim: "true"
+        jsonType.label: String
+        user.attribute: corporateKey
+        userinfo.token.claim: "true"
+      consentRequired: false
+      name: Corporate Key
+      protocol: openid-connect
+      protocolMapper: oidc-usermodel-attribute-mapper

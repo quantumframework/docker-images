@@ -1,0 +1,166 @@
+---
+- name: scale GitLab to zero replicas
+  k8s_scale:
+    api_version: v1
+    kind: StatefulSet
+    name: gitlab
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    current_replicas: 1
+    replicas: 0
+
+- name: retrieve the GitLab OpenID client secret from the cluster
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}apps0001"
+    name: openid.secrets.gitlab
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: "configured OpenID client for GitLab"
+  no_log: not debug
+  when: keycloak_enabed|default(True)
+  keycloak_client:
+    auth_client_id: "{{ keycloak_auth_client_id|default('admin-cli') }}"
+    auth_keycloak_url: "{{ keycloak_url }}"
+    auth_realm: "{{ keycloak_auth_realm|default('master') }}"
+    auth_username: "{{ keycloak_username }}"
+    auth_password: "{{ keycloak_password }}"
+    validate_certs: "{{ keycloak_validate_certs }}"
+    state: present
+    protocol: openid-connect
+    realm: "{{ gitlab_keycloak_realm|default('default') }}"
+    client_id: "https://gitlab.{{ system_base_domain }}"
+    name: GitLab
+    secret: "{{ query.resources[0].data.CLIENT_SECRET|b64decode }}"
+    client_authenticator_type: client-secret
+    standard_flow_enabled: yes
+    implicit_flow_enabled: yes
+    direct_access_grants_enabled: yes
+    service_accounts_enabled: yes
+    authorization_services_enabled: yes
+    root_url: "https://gitlab.{{ system_base_domain }}"
+    base_url: "/"
+    redirect_uris:
+    - "https://gitlab.{{ system_base_domain }}/users/auth/oauth2_generic/callback"
+    web_origins:
+    - "https://gitlab.{{ system_base_domain }}/*"
+    protocol_mappers:
+    - config:
+        access.token.claim: "true"
+        claim.name: corporate_key
+        id.token.claim: "true"
+        jsonType.label: String
+        user.attribute: corporateKey
+        userinfo.token.claim: "true"
+      consentRequired: false
+      name: Corporate Key
+      protocol: openid-connect
+      protocolMapper: oidc-usermodel-attribute-mapper
+
+
+# Ensure that the PostgreSQL database used by GitLab
+# exists. Lookup the admin secret (as the user to
+# connect) and the GitLab database credential.
+- name: retrieve PostgreSQL superuser credentials from the cluster
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    name: postgres.secrets.admin
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: set the PostgreSQL superuser credentials as Ansible facts
+  no_log: not debug
+  set_fact:
+    postgres_user: "{{ query.resources[0].data.PGUSER|b64decode }}"
+    postgres_password: "{{ query.resources[0].data.PGPASSWORD|b64decode }}"
+    postgres_host: "postgres"
+    postgres_port: 5432
+    postgres_db: postgres
+
+- name: retrieve GitLab database credentials from the cluster
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    name: gitlab.secrets.rdbms
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: set the GitLab database credentials as Ansible facts
+  no_log: not debug
+  set_fact:
+    gitlab_database_user: "{{ query.resources[0].data.POSTGRES_USER|b64decode }}"
+    gitlab_database_password: "{{ query.resources[0].data.POSTGRES_PASSWORD|b64decode }}"
+    gitlab_database_name: gitlab
+
+- name: "CREATE ROLE {{ gitlab_database_user }}"
+  register: result
+  retries: 100
+  until: result is success
+  when: not skip_internal_requests
+  postgresql_user:
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_user }}"
+    login_password: "{{ postgres_password }}"
+    port: "{{ postgres_port }}"
+    state: present
+    name: "{{ gitlab_database_user }}"
+    password: "{{ gitlab_database_password }}"
+    encrypted: true
+    role_attr_flags: SUPERUSER # Unfortunately, GitLab needs this.
+
+- name: "CREATE DATABASE {{ gitlab_database_name }}"
+  when: not skip_internal_requests
+  postgresql_db:
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_user }}"
+    login_password: "{{ postgres_password }}"
+    port: "{{ postgres_port }}"
+    state: present
+    name: "{{ gitlab_database_name }}"
+    owner: "{{ gitlab_database_user }}"
+    encoding: "UTF-8"
+    lc_collate: "en_EN.UTF-8"
+    lc_ctype: "en_EN.UTF-8"
+    template: "template0"
+
+- name: "GRANT ALL PRIVILEGES ON {{ gitlab_database_name }} TO {{ gitlab_database_user }}"
+  when: not skip_internal_requests
+  postgresql_privs:
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_user }}"
+    login_password: "{{ postgres_password }}"
+    port: "{{ postgres_port }}"
+    state: present
+    db: "{{ postgres_db }}"
+    privs: "ALL"
+    type: "database"
+    obj: "{{ gitlab_database_name }}"
+    role: "{{ gitlab_database_user }}"
+
+- name: scale GitLab to one replica
+  k8s_scale:
+    api_version: v1
+    kind: StatefulSet
+    name: gitlab
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    current_replicas: 0
+    replicas: 1

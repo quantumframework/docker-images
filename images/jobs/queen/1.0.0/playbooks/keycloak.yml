@@ -1,0 +1,172 @@
+---
+- name: scale Keycloak to zero replicas.
+  k8s_scale:
+    api_version: v1
+    kind: Deployment
+    name: keycloak
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}apps0001"
+    current_replicas: 1
+    replicas: 0
+
+- name: retrieve PostgreSQL superuser credentials from the cluster
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}apps0001"
+    name: postgres.secrets.admin
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: set the PostgreSQL superuser credentials as Ansible facts
+  no_log: not debug
+  set_fact:
+    postgres_user: "{{ query.resources[0].data.PGUSER|b64decode }}"
+    postgres_password: "{{ query.resources[0].data.PGPASSWORD|b64decode }}"
+    postgres_host: "rdbms.{{ K8S_NAMESPACE_PREFIX }}apps0001"
+    postgres_port: 5432
+    postgres_db: postgres
+
+- name: retrieve Keycloak database credentials from the cluster
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}apps0001"
+    name: keycloak.secrets.rdbms
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: set the Keycloak database credentials as Ansible facts
+  no_log: not debug
+  set_fact:
+    keycloak_database_user: "{{ query.resources[0].data.DB_USER|b64decode }}"
+    keycloak_database_password: "{{ query.resources[0].data.DB_PASSWORD|b64decode }}"
+    keycloak_database_name: keycloak
+
+- name: "CREATE ROLE {{ keycloak_database_user }}"
+  register: result
+  retries: 100
+  until: result is success
+  when: not skip_internal_requests
+  postgresql_user:
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_user }}"
+    login_password: "{{ postgres_password }}"
+    port: "{{ postgres_port }}"
+    state: present
+    name: "{{ keycloak_database_user }}"
+    password: "{{ keycloak_database_password }}"
+    encrypted: true
+    role_attr_flags: NOCREATEROLE,NOSUPERUSER,NOCREATEDB
+
+- name: "CREATE DATABASE {{ keycloak_database_name }}"
+  when: not skip_internal_requests
+  postgresql_db:
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_user }}"
+    login_password: "{{ postgres_password }}"
+    port: "{{ postgres_port }}"
+    state: present
+    name: "{{ keycloak_database_name }}"
+    owner: "{{ keycloak_database_user }}"
+    encoding: "UTF-8"
+    lc_collate: "en_EN.UTF-8"
+    lc_ctype: "en_EN.UTF-8"
+    template: "template0"
+
+- name: scale Keycloak to one replica.
+  k8s_scale:
+    api_version: v1
+    kind: Deployment
+    name: keycloak
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}apps0001"
+    current_replicas: 0
+    replicas: 1
+
+- name: "GRANT ALL PRIVILEGES ON {{ keycloak_database_name }} TO {{ keycloak_database_user }}"
+  when: not skip_internal_requests
+  postgresql_privs:
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_user }}"
+    login_password: "{{ postgres_password }}"
+    port: "{{ postgres_port }}"
+    state: present
+    db: "{{ postgres_db }}"
+    privs: "ALL"
+    type: "database"
+    obj: "{{ keycloak_database_name }}"
+    role: "{{ keycloak_database_user }}"
+
+- name: retrieve the Keycloak password from the cluster
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}apps0001"
+    name: keycloak.secrets.admin
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: set Keycloak credentials as Ansible facts
+  no_log: not debug
+  register: result
+  retries: 100
+  until: result is success
+  set_fact:
+    keycloak_username: "{{ query.resources[0].data.KEYCLOAK_USER|b64decode }}"
+    keycloak_password: "{{ query.resources[0].data.KEYCLOAK_PASSWORD|b64decode }}"
+
+- name: ensure that the Terraform state is clean
+  with_items:
+  - plans/keycloak/.terraform
+  - plans/keycloak/terraform.tfstate
+  - plans/keycloak/terraform.tfstate.backup
+  file:
+    path: "{{ item }}"
+    state: absent
+
+- name: initialize Terraform
+  changed_when: false
+  command: terraform init
+  environment: &TERRAFORM_ENV
+    KEYCLOAK_URL: "https://sso.{{ system_base_domain }}"
+    KEYCLOAK_REALM: master
+    KEYCLOAK_USER: "{{ keycloak_username }}"
+    KEYCLOAK_PASSWORD: "{{ keycloak_password }}"
+  args:
+    chdir: plans/keycloak
+
+- name: import Keycloak realm in Terraform
+  changed_when: false
+  command: "terraform import keycloak_realm.realm {{ keycloak_realm }}"
+  environment: *TERRAFORM_ENV
+  args:
+    chdir: plans/keycloak
+  ignore_errors: true
+
+- name: render Terraform variables
+  changed_when: false
+  template:
+    src: "plans/keycloak/variables.json.j2"
+    dest: "plans/keycloak/variables.json"
+
+- name: create default realm
+  changed_when: false
+  environment: *TERRAFORM_ENV
+  command: "terraform apply --auto-approve --var-file variables.json"
+  environment: *TERRAFORM_ENV
+  args:
+    chdir: plans/keycloak

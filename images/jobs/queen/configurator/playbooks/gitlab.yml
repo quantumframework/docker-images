@@ -1,4 +1,13 @@
 ---
+- name: scale GitLab to zero replicas
+  k8s_scale:
+    api_version: v1
+    kind: StatefulSet
+    name: gitlab
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    current_replicas: 1
+    replicas: 0
+
 - name: retrieve the GitLab OpenID client secret from the cluster
   no_log: not debug
   register: query
@@ -146,3 +155,12 @@
     type: "database"
     obj: "{{ gitlab_database_name }}"
     role: "{{ gitlab_database_user }}"
+
+- name: scale GitLab to one replica
+  k8s_scale:
+    api_version: v1
+    kind: StatefulSet
+    name: gitlab
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    current_replicas: 0
+    replicas: 1

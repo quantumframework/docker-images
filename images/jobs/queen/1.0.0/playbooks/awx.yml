@@ -252,6 +252,7 @@
     password: "{{ awx_password }}"
     force_basic_auth: true
     body_format: json
+    status_code: [200, 302]
     body:
       ACTIVITY_STREAM_ENABLED: true
       ACTIVITY_STREAM_ENABLED_FOR_INVENTORY_SYNC: true

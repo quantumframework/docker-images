@@ -61,6 +61,7 @@
 
 - name: "CREATE DATABASE {{ awx_database_name }}"
   when: not skip_internal_requests
+  register: create_database
   postgresql_db:
     login_host: "{{ postgres_host }}"
     login_user: "{{ postgres_user }}"
@@ -87,6 +88,24 @@
     type: "database"
     obj: "{{ awx_database_name }}"
     role: "{{ awx_database_user }}"
+
+- name: scale Ansible Tower to zero
+  when: create_database.changed
+  k8s_scale:
+    api_version: v1
+    kind: Deployment
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    name: awx
+    replicas: 0
+
+- name: scale Ansible Tower to one
+  k8s_scale:
+    api_version: v1
+    kind: Deployment
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    name: awx
+    replicas: 1
+    current_replicas: 0
 
 - name: retrieve the Identity Provider (IdP) credentials from the cluster
   no_log: not debug

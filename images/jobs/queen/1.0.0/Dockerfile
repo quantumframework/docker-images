@@ -68,6 +68,7 @@ FROM docker.io/library/python:3.7-slim-stretch
   RUN mkdir -p plans/keycloak/.terraform/linux_amd64
   COPY playbooks/ playbooks/
   COPY modules/ modules/
+  COPY filter_plugins/ filter_plugins/
   COPY plans/keycloak/* plans/keycloak/
   RUN cd plans/keycloak && terraform init
 

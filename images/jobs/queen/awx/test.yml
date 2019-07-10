@@ -1,16 +1,23 @@
-- name: "created organization {{ org.name }}"
+# Create the configured organization. Set a high number of
+# retries; we assume that if this task is succesfully
+# executed, Ansible Tower is up and running.
+- name: "created organization {{ org.name }}."
+  retries: 100
+  until: result is success
   awx_organization:
     validate_certs: false
     name: "{{ org.name }}"
     description: "{{ org.description }}"
   register: result
 
-- set_fact:
+- name: "set variable 'awx_organization_id'"
+  set_fact:
     awx_organization_id: "{{ result.org.id }}"
 
 # TODO: Here we assume that the pod is in the same namespace
 # as the default secret.
-- when: org.default
+- name: "lookup the Ansible Tower SSH key."
+  when: org.default
   no_log: true
   register: query
   k8s_facts:
@@ -18,12 +25,14 @@
     namespace: "{{ lookup('env', 'POD_NAMESPACE') }}"
     name: "{{ lookup('env', 'AWX_DEFAULT_SSH_SECRETNAME') or 'awx.secrets.ssh' }}"
 
-- when: org.default
+- name: "verify that the lookup returned results."
+  when: org.default
   no_log: true
   assert:
     that: "{{ (query.resources|length) == 1 }}"
 
-- when: org.default
+- name: "decode the public and private key."
+  when: org.default
   no_log: true
   set_fact:
     default_ssh:
@@ -151,7 +160,7 @@
   awx_schema:
     state: present
     job_template_id: "{{ job.resource.id }}"
-    name: "Enfore Runner State"
+    name: "Enforce Runner State"
     description: |-
       Ensure that the runners are configured.
     rrule: "DTSTART;TZID=Europe/Berlin:20190707T000000 RRULE:FREQ=MINUTELY;INTERVAL=15"

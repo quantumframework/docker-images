@@ -12,12 +12,11 @@ FROM docker.io/library/python:3.7-slim-stretch
   ENV RUNTIME_HOME $RUNTIME_HOME
   ENV RUNTIME_SHELL $RUNTIME_SHELL
   ENV ANSIBLE_PLAYBOOK main
-  ENV KEYCLOAK_USER ""
-  ENV KEYCLOAK_PASSWORD ""
-  ENV KEYCLOAK_URL https://sso/auth
 
   USER root
   RUN mkdir -p /container/init.d
+  RUN mkdir -p $RUNTIME_HOME
+  RUN chown $RUNTIME_UID:$RUNTIME_GID $RUNTIME_HOME
   RUN mkdir -p /usr/share/man/man1/
   RUN apt update && apt install -y curl
   RUN pip3 install paramiko==2.4.2
@@ -25,8 +24,6 @@ FROM docker.io/library/python:3.7-slim-stretch
   RUN curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.14.0/bin/linux/amd64/kubectl &&\
     chmod +x ./kubectl &&\
     mv ./kubectl /usr/local/bin/kubectl
-  RUN mkdir -p $RUNTIME_HOME
-  RUN chown $RUNTIME_UID:$RUNTIME_GID $RUNTIME_HOME
   RUN groupadd -g $RUNTIME_GID $RUNTIME_GRP
   RUN useradd -d "$RUNTIME_HOME" -u $RUNTIME_UID -g $RUNTIME_GID\
     -m -s /bin/bash $RUNTIME_USR
@@ -40,12 +37,12 @@ FROM docker.io/library/python:3.7-slim-stretch
   RUN find /container/init.d -type f -exec chmod +x {} \;
   RUN chmod +x /usr/local/bin/docker-entrypoint
 
-  RUN apt autoremove -y python3-pip --purge
-  RUN apt clean
-
   USER ansible
   WORKDIR /home/ansible
-
+  COPY Makefile .
+  ENV KEYCLOAK_USER ""
+  ENV KEYCLOAK_PASSWORD ""
+  ENV KEYCLOAK_URL https://sso/auth
   COPY main.yml main.yml
   RUN echo "noop ansible_connection=local" > hosts
   RUN mkdir -p vars
@@ -53,5 +50,11 @@ FROM docker.io/library/python:3.7-slim-stretch
   RUN echo "---\n{}" > vars/main.yml
   RUN echo "---\n{}" > vault/main.yml
 
+
+  USER root
+  RUN apt autoremove -y python3-pip --purge
+  RUN apt clean
+
+USER ansible
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint"]
 CMD ["ansible-playbook", "main.yml", "-i", "hosts", "-e", "@vars/main.yml", "-e", "@vault/main.yml"]

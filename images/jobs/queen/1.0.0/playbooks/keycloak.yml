@@ -88,29 +88,6 @@
     obj: "{{ keycloak_database_name }}"
     role: "{{ keycloak_database_user }}"
 
-- name: retrieve the Keycloak password from the cluster
-  no_log: not debug
-  register: query
-  k8s_facts:
-    api_version: v1
-    kind: Secret
-    namespace: "{{ K8S_NAMESPACE_PREFIX }}apps0001"
-    name: keycloak.secrets.admin
-
-- name: ensure that the lookup returned a single result
-  no_log: not debug
-  assert:
-    that: "(query.resources|length) == 1"
-
-- name: set Keycloak credentials as Ansible facts
-  no_log: not debug
-  register: result
-  retries: 100
-  until: result is success
-  set_fact:
-    keycloak_username: "{{ query.resources[0].data.KEYCLOAK_USER|b64decode }}"
-    keycloak_password: "{{ query.resources[0].data.KEYCLOAK_PASSWORD|b64decode }}"
-
 - name: ensure that the Terraform state is clean
   with_items:
   - plans/keycloak/.terraform

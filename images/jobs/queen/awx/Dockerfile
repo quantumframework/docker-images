@@ -29,6 +29,7 @@ FROM docker.io/library/python:3.7-slim-stretch
     -m -s /bin/bash $RUNTIME_USR
   RUN pip3 install lxml==4.3.4
   RUN pip3 install requests==2.22.0
+  RUN pip3 install quantum-queen==1.0.0
 
 
   # Copy all executables, and explicitely copy the docker-entrypoint
@@ -39,9 +40,6 @@ FROM docker.io/library/python:3.7-slim-stretch
   RUN find /usr/local/bin -type f -exec chmod +x {} \;
   RUN find /container/init.d -type f -exec chmod +x {} \;
   RUN chmod +x /usr/local/bin/docker-entrypoint
-
-  RUN apt autoremove -y python3-pip --purge
-  RUN apt clean
 
   USER ansible
   WORKDIR /home/ansible
@@ -62,6 +60,10 @@ FROM docker.io/library/python:3.7-slim-stretch
   COPY idp.yml idp.yml
   COPY saml.yml saml.yml
 
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint"]
+  USER root
+  RUN apt autoremove -y python3-pip --purge
+  RUN apt clean
 
+USER ansible
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint"]
 CMD ["ansible-playbook", "main.yml", "-i", "hosts", "-e", "@vars/main.yml", "-e", "@vault/main.yml"]

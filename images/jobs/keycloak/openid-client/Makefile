@@ -5,6 +5,7 @@ DOCKER_IMAGE_NAME=keycloak:openid-client
 ifneq ($(DOCKER_REPOSITORY),)
 DOCKER_QUALNAME=$(DOCKER_REGISTRY)/$(DOCKER_REPOSITORY)/$(DOCKER_IMAGE_NAME)
 endif
+GIT_COMMIT_HASH=$(shell git rev-parse --short HEAD | tr -d '\n')
 
 
 docker-image:

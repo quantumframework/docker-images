@@ -306,6 +306,16 @@
     awx_organization_id: "{{ result.org.id }}"
     awx_organization_name: "{{ result.org.name }}"
 
+- name: "created team {{ awx_default_team_name }}"
+  register: team
+  awx_team:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    validate_certs: false
+    organization_id: "{{ awx_organization_id }}"
+    name: "{{ awx_default_team_name }}"
+
 - name: retrieve AWX SAML key material from the cluster
   no_log: not debug
   register: query
@@ -391,6 +401,7 @@
   no_log: not debug
   assert:
     that: "{{ (query.resources|length) == 1 }}"
+    msg: "{{ query.resources|length }}"
 
 - name: set the Ansible Tower public and private key as Ansible facts
   no_log: not debug

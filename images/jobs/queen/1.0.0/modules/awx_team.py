@@ -1,7 +1,7 @@
 import os
 
 from ansible.module_utils.basic import AnsibleModule
-from queen.ext.awx import TeamModule
+from queen.ext.awx.ansible import TeamModule
 
 
 def main():

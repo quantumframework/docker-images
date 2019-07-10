@@ -36,15 +36,15 @@ FROM hashicorp/terraform:0.12.1
 
   USER terraform
   WORKDIR /home/terraform
-  ENV SSL_CERT_DIR /usr/local/share/ca-certificates
   COPY Makefile .
+  ENV SSL_CERT_DIR /usr/local/share/ca-certificates
   RUN mkdir -p ~/.terraform.d/plugins/linux_amd64
   RUN wget https://github.com/mrparkers/terraform-provider-keycloak/releases/download/1.9.0/terraform-provider-keycloak_v1.9.0_linux_amd64_static.zip
   RUN unzip -: terraform-provider-keycloak*.zip -d ~/.terraform.d/plugins/linux_amd64/
   RUN rm terraform-provider-keycloak*.zip
   COPY main.tf .
   COPY variables.tf .
-
+USER root
+USER terraform
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint"]
-
 CMD ["make", "force-all"]

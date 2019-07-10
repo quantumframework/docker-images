@@ -5,6 +5,7 @@ DOCKER_IMAGE_NAME=keycloak:realm
 ifneq ($(DOCKER_REPOSITORY),)
 DOCKER_QUALNAME=$(DOCKER_REGISTRY)/$(DOCKER_REPOSITORY)/$(DOCKER_IMAGE_NAME)
 endif
+GIT_COMMIT_HASH=$(shell git rev-parse --short HEAD | tr -d '\n')
 TF_VARS_FILE := variables/main.json
 export TF_VARS_FILE
 

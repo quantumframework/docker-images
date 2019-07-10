@@ -11,7 +11,7 @@
     body:
       ACTIVITY_STREAM_ENABLED: true
       ACTIVITY_STREAM_ENABLED_FOR_INVENTORY_SYNC: true
-      ORG_ADMINS_CAN_SEE_ALL_USERS: false
+      ORG_ADMINS_CAN_SEE_ALL_USERS: true
       MANAGE_ORGANIZATION_AUTH: true
       TOWER_ADMIN_ALERTS: true
       TOWER_URL_BASE: "{{ awx_server_url }}"

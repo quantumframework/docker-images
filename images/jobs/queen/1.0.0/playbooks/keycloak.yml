@@ -1,13 +1,4 @@
 ---
-- name: scale Keycloak to zero replicas.
-  k8s_scale:
-    api_version: v1
-    kind: Deployment
-    name: keycloak
-    namespace: "{{ K8S_NAMESPACE_PREFIX }}apps0001"
-    current_replicas: 1
-    replicas: 0
-
 - name: retrieve PostgreSQL superuser credentials from the cluster
   no_log: not debug
   register: query
@@ -83,15 +74,6 @@
     lc_ctype: "en_EN.UTF-8"
     template: "template0"
 
-- name: scale Keycloak to one replica.
-  k8s_scale:
-    api_version: v1
-    kind: Deployment
-    name: keycloak
-    namespace: "{{ K8S_NAMESPACE_PREFIX }}apps0001"
-    current_replicas: 0
-    replicas: 1
-
 - name: "GRANT ALL PRIVILEGES ON {{ keycloak_database_name }} TO {{ keycloak_database_user }}"
   when: not skip_internal_requests
   postgresql_privs:
@@ -146,6 +128,7 @@
     KEYCLOAK_REALM: master
     KEYCLOAK_USER: "{{ keycloak_username }}"
     KEYCLOAK_PASSWORD: "{{ keycloak_password }}"
+    SSL_CERT_DIR: /usr/local/share/ca-certificates
   args:
     chdir: plans/keycloak
 

@@ -65,9 +65,11 @@ FROM docker.io/library/python:3.7-slim-stretch
   RUN wget https://github.com/mrparkers/terraform-provider-keycloak/releases/download/1.9.0/terraform-provider-keycloak_v1.9.0_linux_amd64_static.zip
   RUN unzip -: terraform-provider-keycloak*.zip -d ~/.terraform.d/plugins/linux_amd64/
   RUN rm terraform-provider-keycloak*.zip
+  RUN mkdir -p plans/keycloak/.terraform/linux_amd64
   COPY playbooks/ playbooks/
   COPY modules/ modules/
-  COPY plans/ plans/
+  COPY plans/keycloak/* plans/keycloak/
+  RUN cd plans/keycloak && terraform init
 
   USER root
   RUN apt autoremove -y --purge unzip wget

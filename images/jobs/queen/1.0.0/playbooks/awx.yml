@@ -1,13 +1,4 @@
 ---
-- name: scale Ansible Tower to zero replicas
-  k8s_scale:
-    api_version: v1
-    kind: Deployment
-    name: awx
-    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
-    current_replicas: 1
-    replicas: 0
-
 - name: retrieve PostgreSQL superuser credentials from the cluster
   no_log: not debug
   register: query
@@ -96,15 +87,6 @@
     type: "database"
     obj: "{{ awx_database_name }}"
     role: "{{ awx_database_user }}"
-
-- name: scale Ansible Tower to one replica
-  k8s_scale:
-    api_version: v1
-    kind: Deployment
-    name: awx
-    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
-    current_replicas: 0
-    replicas: 1
 
 - name: retrieve the Identity Provider (IdP) credentials from the cluster
   no_log: not debug

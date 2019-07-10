@@ -36,7 +36,7 @@ FROM docker.io/library/python:3.7-slim-stretch
   RUN rm terraform_0.12.3_linux_amd64.zip
   RUN pip3 install lxml==4.3.4
   RUN pip3 install requests==2.22.0
-  RUN pip3 install quantum-queen==1.0.1
+  RUN pip3 install quantum-queen==1.0.2
   RUN pip3 install openshift==0.8.1
   RUN pip3 install psycopg2-binary==2.8.3
 

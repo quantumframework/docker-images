@@ -267,9 +267,13 @@
 
 # Create the default organization. Set a high number of
 # retries; we assume that if this task is succesfully
-# executed, Ansible Tower is up and running.
+# executed, Ansible Tower is up and running. Tower may
+# still be provisioning at this point, so we do a lot of
+# retries.
 - name: "created organization {{ org_name }}"
   register: result
+  until: result is success
+  retries: 100
   awx_organization:
     api_url: "{{ awx_url }}"
     api_user: "{{ awx_username }}"

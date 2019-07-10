@@ -10,8 +10,12 @@
     debug: "{{ lookup('env', 'DEBUG') == '1' }}"
     validate_certs: no
   tasks:
-  - include_vars: /etc/unimatrix/defaults.yml
-  - include_vars: /etc/unimatrix/unimatrix.yml
+  - include_vars: "{{ lookup('env', 'UNIMATRIX_DEFAULTS') }}"
+    tags:
+    - always
+  - include_vars: "{{ lookup('env', 'UNIMATRIX_ENVIRONMENT') }}"
+    tags:
+    - always
 
   - name: retrieve the Keycloak password from the cluster
     when: keycloak_enabled|default(False)

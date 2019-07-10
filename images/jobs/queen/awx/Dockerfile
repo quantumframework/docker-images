@@ -45,6 +45,8 @@ FROM docker.io/library/python:3.7-slim-stretch
   WORKDIR /home/ansible
   COPY Makefile .
   ENV ANSIBLE_LIBRARY /home/ansible
+  ENV UNIMATRIX_DEFAULTS /etc/unimatrix/defaults.yml
+  ENV UNIMATRIX_ENVIRONMENT /etc/unimatrix/unimatrix.yml
   COPY main.yml main.yml
   RUN echo "noop ansible_connection=local" > hosts
   RUN mkdir -p vars

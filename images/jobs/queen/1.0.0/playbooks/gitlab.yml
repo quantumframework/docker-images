@@ -58,6 +58,15 @@
 # Ensure that the PostgreSQL database used by GitLab
 # exists. Lookup the admin secret (as the user to
 # connect) and the GitLab database credential.
+- name: scale GitLab to zero
+  k8s_scale:
+    api_version: v1
+    kind: StatefulSet
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    name: gitlab
+    replicas: 0
+    current_replicas: 1
+
 - name: retrieve PostgreSQL superuser credentials from the cluster
   no_log: not debug
   register: query
@@ -146,3 +155,13 @@
     type: "database"
     obj: "{{ gitlab_database_name }}"
     role: "{{ gitlab_database_user }}"
+
+- name: scale GitLab to one
+  k8s_scale:
+    api_version: v1
+    kind: StatefulSet
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    name: gitlab
+    replicas: 1
+    current_replicas: 0
+

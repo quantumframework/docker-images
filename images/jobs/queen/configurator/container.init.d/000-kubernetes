@@ -12,7 +12,7 @@ if command -v kubectl > /dev/null && [ -f $K8S_SA_TOKEN ]; then
     --certificate-authority=$K8S_SECRETS_DIR/serviceaccount/ca.crt
   kubectl config set-context queen --cluster=queen
   kubectl config set-credentials $K8S_SERVICEACCOUNT\
-    --token=$(cat $K8S_TOKEN)
+    --token=$(cat $K8S_SA_TOKEN)
   kubectl config set-context queen --user=$K8S_SERVICEACCOUNT
   kubectl config use-context queen
   echo "Configured context 'queen' for kubectl."

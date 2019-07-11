@@ -606,6 +606,9 @@
     playbook: playbooks/runners.yml
     name: "Provision Cluster Runners"
     description: "Provisions worker nodes used by the cluster."
+    variables: |-
+      ---
+      ansible_python_interpreter: /usr/bin/python3
 
 - name: set SSH credentials for job template
   awx_job_template_ssh:

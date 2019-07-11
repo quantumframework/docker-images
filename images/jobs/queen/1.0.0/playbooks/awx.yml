@@ -706,12 +706,31 @@
       - api_ca_crt
     injectors:
       env:
-        K8S_AUTH_HOST: "{% raw %}{{ api_url }}{% endraw %}"
-        K8S_AUTH_API_KEY: "{% raw %}{{ api_token }}{% endraw %}"
-        K8S_AUTH_VERIFY_SSL: "no"
-        K8S_AUTH_SSL_CA_CERT: "{% raw %}{{ tower.filename }}{% endraw %}"
+        K8S_AUTH_KUBECONFIG: "{% raw %}{{ tower.filename }}{% endraw %}"
       file:
-        template: "{% raw %}{{ api_ca_crt }}{% endraw %}"
+        #template: "{% raw %}{{ api_ca_crt }}{% endraw %}"
+        template: |
+          ---
+          apiVersion: v1
+          kind: Config
+          users:
+          - name: queen
+            user:
+              token: "{% raw %}{{ api_token }}{% endraw %}"
+          clusters:
+          - cluster:
+              insecure-skip-tls-verify: true
+              # TODO: TLS not enabled here because the k8s_* modules from
+              # Ansible fuck up the parameters from both the environment
+              # and their inputs.
+              server: {% raw %}{{ api_url }}
+            {% endraw %}name: unimatrix
+          contexts:
+          - context:
+              cluster: unimatrix
+              user: queen
+            name: unimatrix
+          current-context: unimatrix
 
 
 # Create a credential containing the credentials of the current

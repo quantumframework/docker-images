@@ -669,3 +669,112 @@
     description: >-
       Ensure that the Jenkins Docker slaves. are configured.
     rrule: "DTSTART;TZID=Europe/Berlin:20190707T000500 RRULE:FREQ=HOURLY;INTERVAL=2"
+
+
+# Create credential types; mainly infrastructure related concerns
+# such as cloud service accounts.
+- name: create Kubernetes Service Account credential type
+  register: credential_type_k8s
+  awx_credential_type:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    kind: cloud
+    name: Kubernetes Service Account
+    description: >-
+      Maintains Kubernetes cluster credentials.
+    inputs:
+      fields:
+      - type: string
+        id: api_url
+        label: Master endpoint
+      - type: string
+        id: api_token
+        label: Service account token
+        secret: true
+      - type: string
+        id: api_ca_crt
+        label: Cluster CA certificate
+        multiline: true
+      required:
+      - api_url
+      - api_token
+      - api_ca_crt
+    injectors:
+      env:
+        K8S_AUTH_HOST: "{% raw %}{{ api_url }}{% endraw %}"
+        K8S_AUTH_API_KEY: "{% raw %}{{ api_token }}{% endraw %}"
+        K8S_AUTH_VERIFY_SSL: "no"
+        K8S_AUTH_SSL_CA_CERT: "{% raw %}{{ tower.filename }}{% endraw %}"
+      file:
+        template: "{% raw %}{{ api_ca_crt }}{% endraw %}"
+
+
+# Create a credential containing the credentials of the current
+# Kubernetes cluster so we can provision itself.
+- name: lookup cluster management IP address
+  register: query
+  k8s_facts:
+    kind: Endpoints
+    namespace: default
+    name: kubernetes
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: set the cluster IP as an Ansible fact
+  set_fact:
+    k8s_cluster_ip: "{{ query.resources[0].subsets[0].addresses[0]['ip'] }}"
+
+- name: lookup the Unimatrix service account
+  register: query
+  k8s_facts:
+    kind: ServiceAccount
+    namespace: "{{ lookup('env', 'POD_NAMESPACE') }}"
+    name: queen
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: ensure that the .secrets member contains one item
+  assert:
+    that: "(query.resources[0].secrets|length) == 1"
+
+- name: set the service account secret name as an Ansible fact
+  set_fact:
+    k8s_service_account_secret: "{{ query.resources[0].secrets[0].name }}"
+
+- name: lookup the service account secret
+  register: query
+  k8s_facts:
+    kind: Secret
+    namespace: "{{ lookup('env', 'POD_NAMESPACE') }}"
+    name: "{{ k8s_service_account_secret }}"
+
+- name: set service account details as Ansible facts
+  set_fact:
+    k8s_service_account_token: "{{ query.resources[0].data.token|b64decode }}"
+    k8s_service_account_ca: "{{ query.resources[0].data['ca.crt']|b64decode }}"
+
+- name: create local cluster service account credential
+  no_log: no debug
+  awx_credential:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    credential_type: "{{ credential_type_k8s.resource.id }}"
+    name: Local Cluster
+    organization_id: "{{ awx_organization_id }}"
+    description: >-
+      Service account providing access to the cluster that
+      hosts this Ansible Tower instance.
+    inputs:
+      api_url: "https://{{ k8s_cluster_ip }}"
+      api_token: "{{ k8s_service_account_token }}"
+      api_ca_crt: "{{ k8s_service_account_ca }}"

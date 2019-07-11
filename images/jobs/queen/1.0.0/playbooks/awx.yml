@@ -778,6 +778,6 @@
       Service account providing access to the cluster that
       hosts this Ansible Tower instance.
     inputs:
-      api_url: "https://{{ k8s_cluster_ip }}"
+      api_url: "https://{{ k8s_cluster_ip }}:443"
       api_token: "{{ k8s_service_account_token }}"
       api_ca_crt: "{{ k8s_service_account_ca }}"

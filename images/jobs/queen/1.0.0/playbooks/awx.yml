@@ -800,3 +800,68 @@
       api_url: "https://{{ k8s_cluster_ip }}:443"
       api_token: "{{ k8s_service_account_token }}"
       api_ca_crt: "{{ k8s_service_account_ca }}"
+
+
+# Create a Jenkins user if its enabled.
+- name: retrieve the Jenkins credentials from the cluster
+  when: jenkins_enabled|default(False)
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ lookup('env', 'POD_NAMESPACE') }}"
+    name: jenkins.secrets.awx
+
+- name: ensure that the lookup returned a single result or zero
+  when: jenkins_enabled|default(False)
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) <= 1"
+
+- name: create a username and password for Jenkins
+  when: jenkins_enabled|default(False) and not query.resources
+  set_fact:
+    awx_jenkins_username: jenkins
+    awx_jenkins_password: "{{ lookup('password', '/dev/null length=32 chars=hexdigits') }}"
+
+- name: create a secret with the username and password
+  when: jenkins_enabled|default(False) and not query.resources
+  no_log: not debug
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        namespace: "{{ lookup('env', 'POD_NAMESPACE') }}"
+        name: jenkins.secrets.awx
+        labels:
+          app.kubernetes.io/name: jenkins.secrets.awx
+          app.kubernetes.io/component: deployment
+          app.kubernetes.io/part-of: jenkins
+          jenkins.io/credentials-type: usernamePassword
+        annotations:
+          jenkins.io/credentials-description: "Ansible Tower"
+          jenkins.io/credentials-keybinding-username: AWX_USERNAME
+          jenkins.io/credentials-keybinding-password: AWX_PASSWORD
+      type: Opaque
+      stringData:
+        AWX_USERNAME: "{{ awx_jenkins_username }}"
+        AWX_PASSWORD: "{{ awx_jenkins_password }}"
+
+- name: set Jenkins credentials as Ansible facts
+  when: jenkins_enabled|default(False) and query.resources
+  no_log: not debug
+  set_fact:
+    awx_jenkins_username: "{{ query.resources[0].data.AWX_USERNAME|b64decode }}"
+    awx_jenkins_password: "{{ query.resources[0].data.AWX_PASSWORD|b64decode }}"
+
+- name: create Jenkins user in AWX
+  awx_user:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    validate_certs: false
+    username: "{{ awx_jenkins_username }}"
+    password: "{{ awx_jenkins_password }}"

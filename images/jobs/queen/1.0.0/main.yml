@@ -42,9 +42,6 @@
     tags:
     - always
     no_log: not debug
-    register: result
-    retries: 100
-    until: result is success
     set_fact:
       keycloak_username: "{{ query.resources[0].data.KEYCLOAK_USER|b64decode }}"
       keycloak_password: "{{ query.resources[0].data.KEYCLOAK_PASSWORD|b64decode }}"

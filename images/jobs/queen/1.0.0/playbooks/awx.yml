@@ -485,6 +485,34 @@
       over SSH with Git repositories.
     username: git
 
+- name: lookup Ansible Tower credential type
+  register: credential_type_tower
+  awx_credential_type:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: facts
+    name: "Ansible Tower"
+    kind: cloud
+
+- name: create Ansible Tower credential
+  no_log: no debug
+  awx_credential:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    credential_type: "{{ credential_type_tower.resource.id }}"
+    name: "{{ awx_organization_name }} Ansible Tower"
+    organization_id: "{{ awx_organization_id }}"
+    description: >-
+      Credentials for this Ansible Tower instance.
+    inputs:
+      host: "{{ awx_url }}"
+      username: "{{ awx_username }}"
+      password: "{{ awx_password }}"
+      verify_ssl: false
+
 - name: created inventory for cluster runners
   register: inventory
   awx_inventory:
@@ -493,9 +521,9 @@
     api_password: "{{ awx_password }}"
     state: present
     organization_id: "{{ awx_organization_id }}"
-    name: "Unimatrix One"
+    name: "{{ K8S_DEPLOYMENT_ENV }}/unimatrix"
 
-- name: created group for cluster runners
+- name: created group for cluster runners (runners)
   register: group_runners
   awx_inventory_group:
     api_url: "{{ awx_url }}"
@@ -505,7 +533,7 @@
     inventory_id: "{{ inventory.resource.id }}"
     name: "runners"
     description: >-
-      Virtual machines owned by the cluster.
+      Virtual machines owned by the cluster used to run tasks.
 
 - name: created group for Jenkins slaves
   register: group_jenkins
@@ -523,6 +551,19 @@
       ---
       jenkins_openssh_public_key: {{ jenkins_openssh_public_key }}
 
+- name: created group for Unimatrix tasks
+  register: group_unimatrix
+  awx_inventory_group:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    inventory_id: "{{ inventory.resource.id }}"
+    name: "unimatrix"
+    description: >-
+      Nodes that run tasks to configure Unimatrix One.
+    variables: "{{ lookup('file', unimatrix_environment) }}"
+
 - name: added Jenkins slave hosts (Docker) to group
   with_items: "{{ jenkins_slaves_docker|default([]) }}"
   when: jenkins_enabled|default(False)
@@ -536,7 +577,7 @@
     description: "Jenkins Docker slave."
     enabled: true
 
-- name: added Ansible Tower runners to group
+- name: added Ansible Tower runners to runners group
   with_items: "{{ awx_runners|default([]) }}"
   awx_inventory_host:
     api_url: "{{ awx_url }}"
@@ -544,6 +585,18 @@
     api_password: "{{ awx_password }}"
     state: present
     group_id: "{{ group_runners.resource.id }}"
+    host: "{{ item }}"
+    description: "Ansible Tower task runner."
+    enabled: true
+
+- name: added Ansible Tower runners to unimatrix group
+  with_items: "{{ awx_runners|default([]) }}"
+  awx_inventory_host:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    group_id: "{{ group_unimatrix.resource.id }}"
     host: "{{ item }}"
     description: "Ansible Tower task runner."
     enabled: true
@@ -556,7 +609,7 @@
     api_password: "{{ awx_password }}"
     state: present
     organization_id: "{{ awx_organization_id }}"
-    name: "Unimatrix One Runners"
+    name: "{{ awx_runners_git_branch|default('master') }}/Ansible Tower Runners"
     description: >-
       Provisions the virtual machines that are used by the cluster to
       perform various tasks that typically can not run in Docker
@@ -578,7 +631,7 @@
     api_password: "{{ awx_password }}"
     state: present
     organization_id: "{{ awx_organization_id }}"
-    name: "Jenkins Slaves (Docker)"
+    name: "{{ awx_runners_git_branch|default('master') }}/Jenkins Docker Slaves"
     description: >-
       Provisions slaves that Jenkins uses to build Docker
       images.
@@ -604,7 +657,7 @@
     become: true
     kind: run
     playbook: playbooks/runners.yml
-    name: "Provision Cluster Runners"
+    name: "{{ K8S_DEPLOYMENT_ENV }}/provision/runners"
     description: "Provisions worker nodes used by the cluster."
     variables: |-
       ---
@@ -626,12 +679,12 @@
     api_password: "{{ awx_password }}"
     state: present
     job_template_id: "{{ job_runners.resource.id }}"
-    name: "Enforce Runner State"
+    name: "Enforce Runner State ({{ K8S_DEPLOYMENT_ENV }})"
     description: >-
       Ensure that the runners are configured.
-    rrule: "DTSTART;TZID=Europe/Berlin:20190707T000500 RRULE:FREQ=HOURLY;INTERVAL=2"
+    rrule: "DTSTART;TZID=Europe/Berlin:20190707T000000 RRULE:FREQ=HOURLY;INTERVAL=2"
 
-- name: create job template to provision Jenkins Docker slaves
+- name: create job template to provision Jenkins slaves
   when: jenkins_enabled|default(False)
   register: job_jenkins_docker
   retries: 100
@@ -646,7 +699,7 @@
     become: true
     kind: run
     playbook: playbooks/jenkins-docker.yml
-    name: "Provision Jenkins Docker Slaves"
+    name: "{{ K8S_DEPLOYMENT_ENV }}/provision/jenkins-slaves"
     description: >-
       Provisions slaves used by Jenkins to build Docker images.
 
@@ -668,7 +721,7 @@
     api_password: "{{ awx_password }}"
     state: present
     job_template_id: "{{ job_jenkins_docker.resource.id }}"
-    name: "Enforce Jenkins Slave (Docker) State"
+    name: "Enforce Jenkins Slave (Docker) State ({{ K8S_DEPLOYMENT_ENV }})"
     description: >-
       Ensure that the Jenkins Docker slaves. are configured.
     rrule: "DTSTART;TZID=Europe/Berlin:20190707T000500 RRULE:FREQ=HOURLY;INTERVAL=2"
@@ -731,6 +784,31 @@
               user: queen
             name: unimatrix
           current-context: unimatrix
+
+- name: create Google Service Account (JSON) credential type
+  register: credential_type_gcp_json
+  awx_credential_type:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    kind: cloud
+    name: Google Service Account (JSON)
+    description: >-
+      Maintains Google Service Account credentials as
+      JSON.
+    inputs:
+      fields:
+      - type: string
+        id: sa_json
+        label: Service account JSON
+        secret: true
+        multiline: true
+      required:
+      - sa_json
+    injectors:
+      extra_vars:
+        gcp_service_account_contents: "{% raw %}{{ sa_json }}{% endraw %}"
 
 
 # Create a credential containing the credentials of the current

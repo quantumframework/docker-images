@@ -9,6 +9,8 @@
     skip_internal_requests: "{{ lookup('env', 'UM_SKIP_INTERNAL_REQUESTS') == '1' }}"
     debug: "{{ lookup('env', 'DEBUG') == '1' }}"
     validate_certs: no
+    unimatrix_defaults: "{{ lookup('env', 'UNIMATRIX_DEFAULTS') }}"
+    unimatrix_environment: "{{ lookup('env', 'UNIMATRIX_ENVIRONMENT') }}"
   tasks:
   - include_vars: "{{ lookup('env', 'UNIMATRIX_DEFAULTS') }}"
     tags:

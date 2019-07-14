@@ -522,6 +522,10 @@
     state: present
     organization_id: "{{ awx_organization_id }}"
     name: "{{ K8S_DEPLOYMENT_ENV }}/unimatrix"
+    variables: |-
+      ---
+      deployment_env_name: "{{ K8S_DEPLOYMENT_ENV }}"
+      deployment_env_alias: "{{ K8S_DEPLOYMENT_ALIAS }}"
 
 - name: created group for cluster runners (runners)
   register: group_runners
@@ -657,7 +661,7 @@
     become: true
     kind: run
     playbook: playbooks/runners.yml
-    name: "{{ K8S_DEPLOYMENT_ENV }}/provision/runners"
+    name: "Provision Ansible Tower worker nodes"
     description: "Provisions worker nodes used by the cluster."
     variables: |-
       ---
@@ -699,7 +703,7 @@
     become: true
     kind: run
     playbook: playbooks/jenkins-docker.yml
-    name: "{{ K8S_DEPLOYMENT_ENV }}/provision/jenkins-slaves"
+    name: "Provision Jenkins slaves"
     description: >-
       Provisions slaves used by Jenkins to build Docker images.
 

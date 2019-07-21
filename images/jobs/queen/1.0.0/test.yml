@@ -1,0 +1,13 @@
+- hosts: localhost
+  tasks:
+  - register: bar
+    tempfile:
+      state: file
+      suffix: temp
+  - register: foo
+    tempfile:
+      state: file
+      suffix: temp
+
+  - debug:
+      msg: "{{ foo.path }} and {{ bar.path }}"

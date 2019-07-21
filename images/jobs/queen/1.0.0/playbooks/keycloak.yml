@@ -1,4 +1,16 @@
 ---
+#- name: create Keycloak database
+#  when: not apps0001_postgresql_host|default(False)
+#  include_tasks: includes/postgresql_database.yml
+#  vars:
+#    postgresql_admin_secret: postgres.secrets.admin
+#    postgresql_is_external: apps0001_postgresql_connection|default(False)
+#    target_rdbms_name: keycloak
+#    target_rdbms_secret: keycloak.secrets.rdbms
+#    target_rdbms_attr_username: DB_USER
+#    target_rdbms_attr_password: DB_PASSWORD
+#    namespace: "{{ K8S_NAMESPACE_PREFIX }}apps0001"
+#
 - name: retrieve PostgreSQL superuser credentials from the cluster
   no_log: not debug
   register: query

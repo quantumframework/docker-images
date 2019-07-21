@@ -1,2 +1,4 @@
 plans/keycloak/variables.json
+plans/keycloak/terraform.tfstate
+plans/keycloak/terraform.tfstate.backup
 test.env

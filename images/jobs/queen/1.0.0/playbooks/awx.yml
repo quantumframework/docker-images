@@ -613,7 +613,7 @@
     api_password: "{{ awx_password }}"
     state: present
     organization_id: "{{ awx_organization_id }}"
-    name: "{{ awx_runners_git_branch|default('master') }}/Ansible Tower Runners"
+    name: "Ansible Tower Runners"
     description: >-
       Provisions the virtual machines that are used by the cluster to
       perform various tasks that typically can not run in Docker
@@ -635,7 +635,7 @@
     api_password: "{{ awx_password }}"
     state: present
     organization_id: "{{ awx_organization_id }}"
-    name: "{{ awx_runners_git_branch|default('master') }}/Jenkins Docker Slaves"
+    name: "Jenkins Docker Slaves"
     description: >-
       Provisions slaves that Jenkins uses to build Docker
       images.
@@ -762,6 +762,10 @@
       - api_token
       - api_ca_crt
     injectors:
+      extra_vars:
+        k8s_api_key: "{% raw %}{{ api_token }}{% endraw %}"
+        k8s_host: "{% raw %}{{ api_url }}{% endraw %}"
+        k8s_ca_cert_content: "{% raw %}{{ api_ca_crt }}{% endraw %}"
       env:
         K8S_AUTH_KUBECONFIG: "{% raw %}{{ tower.filename }}{% endraw %}"
       file:

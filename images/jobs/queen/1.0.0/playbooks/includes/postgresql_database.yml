@@ -1,0 +1,109 @@
+---
+- name: retrieve PostgreSQL superuser credentials from the cluster
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ namespace }}"
+    name: "{{ postgresql_admin_secret }}"
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: clear out pre-existing facts related to server PKI.
+  set_fact:
+    postgres_ca_cert: ""
+    postgres_client_cert: ""
+    postgres_client_key: ""
+    postgres_user: ""
+    postgres_password: ""
+    postgres_host: ""
+    postgres_port: ""
+    postgres_db: postgres
+
+# TODO: PostgreSQL Ansible modules do not support client
+# certificates.
+#- name: create temporary file to hold the server CA certificate.
+#  when: query.resources[0].data['server-ca.pem']|default(None)
+#  register: postgres_server_ca
+#  tempfile:
+#    state: file
+#    suffix: temp
+#
+#- name: create temporary file to hold the client certificate.
+#  when: query.resources[0].data['client-cert.pem']|default(None)
+#  register: postgres_client_crt
+#  tempfile:
+#    state: file
+#    suffix: temp
+#
+#- name: create temporary file to hold the client key.
+#  when: query.resources[0].data['client-cert.key']|default(None)
+#  register: postgres_client_key
+#  tempfile:
+#    state: file
+#    suffix: temp
+
+- name: set the PostgreSQL superuser credentials as Ansible facts
+  no_log: not debug
+  set_fact:
+    postgres_user: "{{ query.resources[0].data.PGUSER|b64decode }}"
+    postgres_password: "{{ query.resources[0].data.PGPASSWORD|b64decode }}"
+    postgres_host: "{{ query.resources[0].data.PGHOST|b64decode }}"
+    postgres_port: "{{ query.resources[0].data.PGPORT|b64decode }}"
+    postgres_db: postgres
+
+- name: retrieve target database credentials from the cluster
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ namespace }}"
+    name: "{{ target_rdbms_secret }}"
+
+- name: ensure that the lookup returned a single result
+  no_log: not debug
+  assert:
+    that: "(query.resources|length) == 1"
+
+- name: set the target database credentials as Ansible facts
+  no_log: not debug
+  set_fact:
+    target_database_user: "{{ query.resources[0].data[target_rdbms_attr_username]|b64decode }}"
+    target_database_password: "{{ query.resources[0].data[target_rdbms_attr_password]|b64decode }}"
+    target_database_name: "{{ target_rdbms_name }}"
+
+- name: "CREATE ROLE {{ target_database_user }}"
+  register: result
+  #retries: 100
+  #until: result is success
+  when: not skip_internal_requests
+  postgresql_user:
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_user }}"
+    login_password: "{{ postgres_password }}"
+    port: "{{ postgres_port }}"
+    state: present
+    name: "{{ target_database_user }}"
+    password: "{{ target_database_password }}"
+    encrypted: true
+    role_attr_flags: "{{ target_role_attr_flags|default('NOCREATEROLE,NOSUPERUSER,NOCREATEDB') }}"
+
+- name: "CREATE DATABASE {{ target_database_name }}"
+  when: not skip_internal_requests
+  postgresql_db:
+    login_host: "{{ postgres_host }}"
+    login_user: "{{ postgres_user }}"
+    login_password: "{{ postgres_password }}"
+    port: "{{ postgres_port }}"
+    state: present
+    name: "{{ target_database_name }}"
+    owner: "{{ target_database_user }}"
+    encoding: "UTF-8"
+    lc_collate: "en_EN.UTF-8"
+    lc_ctype: "en_EN.UTF-8"
+    template: "template0"

@@ -59,6 +59,7 @@
 # exists. Lookup the admin secret (as the user to
 # connect) and the GitLab database credential.
 - name: retrieve PostgreSQL superuser credentials from the cluster
+  when: not skip_internal_requests
   no_log: not debug
   register: query
   k8s_facts:
@@ -68,11 +69,13 @@
     name: postgres.secrets.admin
 
 - name: ensure that the lookup returned a single result
+  when: not skip_internal_requests
   no_log: not debug
   assert:
     that: "(query.resources|length) == 1"
 
 - name: set the PostgreSQL superuser credentials as Ansible facts
+  when: not skip_internal_requests
   no_log: not debug
   set_fact:
     postgres_user: "{{ query.resources[0].data.PGUSER|b64decode }}"
@@ -165,3 +168,133 @@
     name: gitlab
     replicas: 1
     current_replicas: 0
+
+- name: create GitLab group for infrastructure codebases.
+  gitlab_group:
+    server_url: "{{ gitlab_api_url }}"
+    api_token: "{{ gitlab_api_token }}"
+    validate_certs: false
+    name: "isd"
+    description: >-
+      Infrastructure Service Delivery (ISD)
+    path: isd
+    visibility: private
+
+- name: create GitLab project for Unimatrix One
+  gitlab_project:
+    server_url: "{{ gitlab_api_url }}"
+    api_token: "{{ gitlab_api_token }}"
+    validate_certs: false
+    name: unimatrix-one
+    description: |-
+      Unimatrix One
+    group: isd
+    issues_enabled: false
+    wiki_enabled: false
+    snippets_enabled: true
+    merge_requests_enabled: true
+
+- name: create GitLab project for GitLab configuration
+  gitlab_project:
+    server_url: "{{ gitlab_api_url }}"
+    api_token: "{{ gitlab_api_token }}"
+    validate_certs: false
+    name: gitlab
+    description: |-
+      GitLab configuration as code
+    group: isd
+    issues_enabled: false
+    wiki_enabled: false
+    snippets_enabled: false
+    merge_requests_enabled: true
+    import_url: https://github.com/quantumframework/gitlab-config-seed.git
+
+- name: create GitLab project for Ansible Tower configuration
+  when: awx_enabled
+  gitlab_project:
+    server_url: "{{ gitlab_api_url }}"
+    api_token: "{{ gitlab_api_token }}"
+    validate_certs: false
+    name: awx
+    description: |-
+      Ansible Tower configuration as code
+    group: isd
+    issues_enabled: false
+    wiki_enabled: false
+    snippets_enabled: false
+    merge_requests_enabled: true
+    import_url: https://github.com/quantumframework/awx-config-seed.git
+
+- name: retrieve the GitLab credentials for Ansible Tower from the cluster
+  when: gitlab_api_configured and awx_enabled
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    name: awx.secrets.gitlab
+
+- name: retrieve the Ansible Tower SSH key from the cluster
+  when: gitlab_api_configured and jenkins_enabled
+  no_log: not debug
+  register: ssh
+  k8s_facts:
+    api_version: v1
+    kind: ConfigMap
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    name: awx.secrets.git
+
+- name: create Ansible Tower user in GitLab
+  when: gitlab_api_configured and awx_enabled
+  no_log: not debug
+  gitlab_user:
+    server_url: "{{ gitlab_api_url }}"
+    api_token: "{{ gitlab_api_token }}"
+    validate_certs: false
+    name: "Ansible Tower"
+    group: isd
+    access_level: master
+    username: "{{ query.resources[0].data.GITLAB_USERNAME|b64decode }}"
+    password: "{{ query.resources[0].data.GITLAB_PASSWORD|b64decode }}"
+    email: "{{ query.resources[0].data.GITLAB_EMAIL|b64decode }}"
+    confirm: false
+    sshkey_name: Ansible Tower
+    sshkey_file: "{{ ssh.resources[0].data['id_rsa.pub'] }}"
+
+- name: retrieve the GitLab credentials for Jenkins from the cluster
+  when: gitlab_api_configured and jenkins_enabled
+  no_log: not debug
+  register: query
+  k8s_facts:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    name: jenkins.secrets.gitlab
+
+- name: retrieve the Jenkins SSH key from the cluster
+  when: gitlab_api_configured and jenkins_enabled
+  no_log: not debug
+  register: ssh
+  k8s_facts:
+    api_version: v1
+    kind: ConfigMap
+    namespace: "{{ K8S_NAMESPACE_PREFIX }}infra0002"
+    name: jenkins.secrets.git
+
+- name: create Jenkins user in GitLab
+  when: gitlab_api_configured and jenkins_enabled
+  no_log: not debug
+  gitlab_user:
+    server_url: "{{ gitlab_api_url }}"
+    api_token: "{{ gitlab_api_token }}"
+    validate_certs: false
+    name: "Jenkins"
+    group: isd
+    access_level: master
+    username: "{{ query.resources[0].data.GITLAB_USERNAME|b64decode }}"
+    password: "{{ query.resources[0].data.GITLAB_PASSWORD|b64decode }}"
+    email: "{{ query.resources[0].data.GITLAB_EMAIL|b64decode }}"
+    confirm: false
+    sshkey_name: Jenkins
+    sshkey_file: "{{ ssh.resources[0].data['id_rsa.pub'] }}"

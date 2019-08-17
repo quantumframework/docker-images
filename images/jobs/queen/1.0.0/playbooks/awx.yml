@@ -1,5 +1,6 @@
 ---
 - name: retrieve PostgreSQL superuser credentials from the cluster
+  when: not skip_internal_requests
   no_log: not debug
   register: query
   k8s_facts:
@@ -9,11 +10,13 @@
     name: postgres.secrets.admin
 
 - name: ensure that the lookup returned a single result
+  when: not skip_internal_requests
   no_log: not debug
   assert:
     that: "(query.resources|length) == 1"
 
 - name: set the PostgreSQL superuser credentials as Ansible facts
+  when: not skip_internal_requests
   no_log: not debug
   set_fact:
     postgres_user: "{{ query.resources[0].data.PGUSER|b64decode }}"
@@ -497,6 +500,7 @@
 
 - name: create Ansible Tower credential
   no_log: no debug
+  register: result
   awx_credential:
     api_url: "{{ awx_url }}"
     api_user: "{{ awx_username }}"
@@ -512,6 +516,20 @@
       username: "{{ awx_username }}"
       password: "{{ awx_password }}"
       verify_ssl: false
+
+- name: set the id of the Ansible Tower credential as Ansible fact
+  set_fact:
+    awx_credential_id: "{{ result.resource.id }}"
+
+- name: remove the Demo Inventory
+  register: inventory
+  awx_inventory:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: absent
+    organization_name: "Default"
+    name: "Demo Inventory"
 
 - name: created inventory for cluster runners
   register: inventory
@@ -733,6 +751,42 @@
 
 # Create credential types; mainly infrastructure related concerns
 # such as cloud service accounts.
+- name: create GitLab API Token credential type
+  register: credential_type_gitlab
+  awx_credential_type:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    kind: cloud
+    name: GitLab API Token
+    description: >-
+      Injects GitLab API parameters into playbook environment.
+    inputs:
+      fields:
+      - type: string
+        id: server_url
+        label: Server URL
+      - type: string
+        id: api_token
+        label: API Token
+        secret: true
+      - type: boolean
+        id: validate_certs
+        label: Validate certificates
+      required:
+      - server_url
+      - api_token
+    injectors:
+      env:
+        GITLAB_API_TOKEN: "{% raw %}{{ api_token }}{% endraw %}"
+        GITLAB_API_URL: "{% raw %}{{ server_url }}{% endraw %}"
+        GITLAB_VALIDATE_CERTS: "{% raw %}{% if validate_certs %}1{% else %}0{% endif %}{% endraw %}"
+      extra_vars:
+        gitlab_api_token: "{% raw %}{{ api_token }}{% endraw %}"
+        gitlab_api_url: "{% raw %}{{ server_url }}{% endraw %}"
+        gitlab_validate_certs: "{% raw %}{{ validate_certs|default(False) }}{% endraw %}"
+
 - name: create Kubernetes Service Account credential type
   register: credential_type_k8s
   awx_credential_type:
@@ -741,7 +795,7 @@
     api_password: "{{ awx_password }}"
     state: present
     kind: cloud
-    name: Kubernetes Service Account
+    name: Kubernetes Kubeconfig (Service Account)
     description: >-
       Maintains Kubernetes cluster credentials.
     inputs:
@@ -762,10 +816,6 @@
       - api_token
       - api_ca_crt
     injectors:
-      extra_vars:
-        k8s_api_key: "{% raw %}{{ api_token }}{% endraw %}"
-        k8s_host: "{% raw %}{{ api_url }}{% endraw %}"
-        k8s_ca_cert_content: "{% raw %}{{ api_ca_crt }}{% endraw %}"
       env:
         K8S_AUTH_KUBECONFIG: "{% raw %}{{ tower.filename }}{% endraw %}"
       file:
@@ -815,8 +865,12 @@
       required:
       - sa_json
     injectors:
+      env:
+        GOOGLE_APPLICATION_CREDENTIALS: "{% raw %}{{ tower.filename }}{% endraw %}"
       extra_vars:
         gcp_service_account_contents: "{% raw %}{{ sa_json }}{% endraw %}"
+      file:
+        template: "{% raw %}{{ sa_json }}{% endraw %}"
 
 
 # Create a credential containing the credentials of the current
@@ -877,7 +931,7 @@
     api_password: "{{ awx_password }}"
     state: present
     credential_type: "{{ credential_type_k8s.resource.id }}"
-    name: Local Cluster
+    name: "{{ awx_organization_name }} Unimatrix One"
     organization_id: "{{ awx_organization_id }}"
     description: >-
       Service account providing access to the cluster that
@@ -886,7 +940,6 @@
       api_url: "https://{{ k8s_cluster_ip }}:443"
       api_token: "{{ k8s_service_account_token }}"
       api_ca_crt: "{{ k8s_service_account_ca }}"
-
 
 # Create a Jenkins user if its enabled.
 - name: retrieve the Jenkins credentials from the cluster
@@ -951,3 +1004,156 @@
     validate_certs: false
     username: "{{ awx_jenkins_username }}"
     password: "{{ awx_jenkins_password }}"
+
+
+# Create some Ansible Tower projects to allow Unimatrix One
+# configuration.
+- name: created inventory for local actions
+  register: inventory
+  awx_inventory:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    organization_id: "{{ awx_organization_id }}"
+    name: "unimatrix"
+    variables: |-
+      {{ lookup('file', unimatrix_environment).rstrip('\n') }}
+      deployment_env_name: "{{ K8S_DEPLOYMENT_ENV }}"
+      deployment_env_alias: "{{ K8S_DEPLOYMENT_ALIAS }}"
+
+- name: add localhost to local inventory
+  awx_inventory_host:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    inventory_id: "{{ inventory.resource.id }}"
+    state: present
+    host: localhost
+    description: Ansible Tower
+    enabled: true
+    variables: |-
+      ---
+      ansible_connection: local
+      ansible_python_interpreter: /opt/unimatrix/bin/python3
+
+- name: created project for Ansible Tower configuration
+  register: project
+  awx_project_scm:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    organization_id: "{{ awx_organization_id }}"
+    name: "Ansible Tower Configuration"
+    credential: "{{ git.resource.id }}"
+    description: >-
+      Configures Ansible Tower using Ansible.
+    scm_type: git
+    scm_url: "git@git.{{ system_base_domain }}:isd/awx.git"
+    scm_branch: master
+    scm_clean: true
+    scm_delete_on_update: false
+    scm_update_on_launch: true
+    scm_update_cache_timeout: 0
+
+- name: created job template to configure Ansible Tower
+  register: job_template
+  retries: 10
+  until: job_template is success
+  awx_job_template:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    inventory_id: "{{ inventory.resource.id }}"
+    project_id: "{{ project.resource.id }}"
+    become: false
+    kind: run
+    playbook: main.yml
+    name: Configure Ansible Tower
+    description: |-
+      Configure Ansible Tower using Ansible.
+    ask_variables_on_launch: true
+    ask_job_type_on_launch: true
+
+- name: set credentials for Configure Ansible Tower template
+  awx_job_template_ssh:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    job_template_id: "{{ job_template.resource.id }}"
+    credential_id: "{{ awx_credential_id }}"
+
+
+# Configure GitLab API credentials.
+- name: create GitLab credential
+  when: gitlab_api_configured
+  no_log: no debug
+  register: result
+  awx_credential:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    credential_type: "{{ credential_type_gitlab.resource.id }}"
+    name: "{{ awx_organization_name }} GitLab"
+    organization_id: "{{ awx_organization_id }}"
+    description: >-
+      Credentials for the GitLab API.
+    inputs:
+      server_url: "{{ gitlab_api_url }}"
+      api_token: "{{ gitlab_api_token }}"
+      validate_certs: "{{ gitlab_validate_certs }}"
+
+- name: set GitLab credential id as an Ansible fact
+  set_fact:
+    gitlab_credential_id: "{{ result.resource.id }}"
+
+- name: created project for GitLab configuration
+  register: project
+  awx_project_scm:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    organization_id: "{{ awx_organization_id }}"
+    name: "GitLab Configuration"
+    credential: "{{ git.resource.id }}"
+    description: >-
+      Configures GitLab using Ansible.
+    scm_type: git
+    scm_url: "git@git.{{ system_base_domain }}:isd/gitlab.git"
+    scm_branch: master
+    scm_clean: true
+    scm_delete_on_update: false
+    scm_update_on_launch: true
+    scm_update_cache_timeout: 0
+
+- name: created job template to configure GitLab
+  register: job_template
+  retries: 10
+  until: job_template is success
+  awx_job_template:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    state: present
+    inventory_id: "{{ inventory.resource.id }}"
+    project_id: "{{ project.resource.id }}"
+    become: false
+    kind: run
+    playbook: main.yml
+    name: Configure GitLab
+    description: |-
+      Configure GitLab using Ansible.
+    ask_variables_on_launch: true
+    ask_job_type_on_launch: true
+
+- name: set credentials for Configure Gitlab template
+  awx_job_template_ssh:
+    api_url: "{{ awx_url }}"
+    api_user: "{{ awx_username }}"
+    api_password: "{{ awx_password }}"
+    job_template_id: "{{ job_template.resource.id }}"
+    credential_id: "{{ gitlab_credential_id }}"

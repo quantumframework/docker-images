@@ -81,14 +81,12 @@ def run_module():
     if not org_id and not org_name:
         module.fail_json(
             msg="Specify either organization_name or organization_id")
-    if org_name:
-        raise NotImplementedError
 
     search_filter = {'name': name, 'many': True}
     if org_id:
         search_filter['organization__id'] = org_id
     if org_name:
-        search_filter['organization_name'] = org_name
+        search_filter['organization__name'] = org_name
     obj = rf.getresource('inventories/', **search_filter)
     dto = {
         "name": name,
@@ -103,7 +101,8 @@ def run_module():
     if state == 'absent' and obj is None:
         pass
     elif state == 'absent' and obj:
-        raise NotImplementedError
+        result['changed'] = True
+        response = rf.request('DELETE', 'inventories/' + str(obj['id']))
     elif state == 'present' and not obj:
         result['changed'] = True
         response = rf.request('POST', 'inventories/', json=dto)

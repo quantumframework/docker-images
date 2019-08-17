@@ -56,6 +56,7 @@ def run_module():
         'organization_id': {'type': 'int', 'required': False},
         'name': {'type': 'str', 'required': True},
         'description': {'type': 'str', 'required': False},
+        'credential': {'type': 'int', 'required': False},
         'scm_type': {'type': 'str', 'required': True},
         'scm_url': {'type': 'str', 'required': True},
         'scm_branch': {'type': 'str', 'required': True},
@@ -111,6 +112,8 @@ def run_module():
         "scm_update_cache_timeout": scm_update_cache_timeout,
         'scm_clean': scm_clean
     }
+    if module.params.get('credential'):
+        dto['credential'] = module.params['credential']
 
     if state == 'absent' and obj is None:
         pass

@@ -3,5 +3,5 @@ export UNIMATRIX_DEFAULTS=~/src/digitalcitizen/cloud-infrastructure/dc-cluster00
 export UNIMATRIX_ENVIRONMENT=~/src/digitalcitizen/cloud-infrastructure/dc-cluster001/ops/ansible/vars/production.yml
 export UM_SKIP_INTERNAL_REQUESTS=1
 export ANSIBLE_LIBRARY=./modules
-export GITLAB_API_TOKEN=Ky52m6KfMvxxk7odfotM
+#export GITLAB_API_TOKEN=Ky52m6KfMvxxk7odfotM
 export POD_NAMESPACE=nspinfra0002

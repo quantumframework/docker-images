@@ -1038,6 +1038,7 @@
       ansible_python_interpreter: /opt/unimatrix/bin/python3
 
 - name: created project for Ansible Tower configuration
+  when: gitlab_api_configured
   register: project
   awx_project_scm:
     api_url: "{{ awx_url }}"
@@ -1058,6 +1059,7 @@
     scm_update_cache_timeout: 0
 
 - name: created job template to configure Ansible Tower
+  when: gitlab_api_configured
   register: job_template
   retries: 10
   until: job_template is success
@@ -1078,6 +1080,7 @@
     ask_job_type_on_launch: true
 
 - name: set credentials for Configure Ansible Tower template
+  when: gitlab_api_configured
   awx_job_template_ssh:
     api_url: "{{ awx_url }}"
     api_user: "{{ awx_username }}"
@@ -1107,10 +1110,12 @@
       validate_certs: "{{ gitlab_validate_certs }}"
 
 - name: set GitLab credential id as an Ansible fact
+  when: gitlab_api_configured
   set_fact:
     gitlab_credential_id: "{{ result.resource.id }}"
 
 - name: created project for GitLab configuration
+  when: gitlab_api_configured
   register: project
   awx_project_scm:
     api_url: "{{ awx_url }}"
@@ -1131,6 +1136,7 @@
     scm_update_cache_timeout: 0
 
 - name: created job template to configure GitLab
+  when: gitlab_api_configured
   register: job_template
   retries: 10
   until: job_template is success
@@ -1151,6 +1157,7 @@
     ask_job_type_on_launch: true
 
 - name: set credentials for Configure Gitlab template
+  when: gitlab_api_configured
   awx_job_template_ssh:
     api_url: "{{ awx_url }}"
     api_user: "{{ awx_username }}"

@@ -170,17 +170,19 @@
     current_replicas: 0
 
 - name: create GitLab group for infrastructure codebases.
+  when: gitlab_api_configured
   gitlab_group:
     server_url: "{{ gitlab_api_url }}"
     api_token: "{{ gitlab_api_token }}"
     validate_certs: false
-    name: "isd"
+    name: isd
     description: >-
       Infrastructure Service Delivery (ISD)
     path: isd
     visibility: private
 
 - name: create GitLab project for Unimatrix One
+  when: gitlab_api_configured
   gitlab_project:
     server_url: "{{ gitlab_api_url }}"
     api_token: "{{ gitlab_api_token }}"
@@ -195,6 +197,7 @@
     merge_requests_enabled: true
 
 - name: create GitLab project for GitLab configuration
+  when: gitlab_api_configured
   gitlab_project:
     server_url: "{{ gitlab_api_url }}"
     api_token: "{{ gitlab_api_token }}"
@@ -210,7 +213,7 @@
     import_url: https://github.com/quantumframework/gitlab-config-seed.git
 
 - name: create GitLab project for Ansible Tower configuration
-  when: awx_enabled
+  when: gitlab_api_configured and awx_enabled
   gitlab_project:
     server_url: "{{ gitlab_api_url }}"
     api_token: "{{ gitlab_api_token }}"
@@ -247,7 +250,10 @@
 
 - name: create Ansible Tower user in GitLab
   when: gitlab_api_configured and awx_enabled
-  no_log: not debug
+  #no_log: not debug
+  register: result
+  until: not result is changed
+  retries: 5
   gitlab_user:
     server_url: "{{ gitlab_api_url }}"
     api_token: "{{ gitlab_api_token }}"
@@ -285,6 +291,9 @@
 - name: create Jenkins user in GitLab
   when: gitlab_api_configured and jenkins_enabled
   no_log: not debug
+  register: result
+  until: not result is changed
+  retries: 5
   gitlab_user:
     server_url: "{{ gitlab_api_url }}"
     api_token: "{{ gitlab_api_token }}"
